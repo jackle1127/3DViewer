@@ -1,0 +1,56 @@
+<shaders>
+    <vertex>
+        attribute mediump vec3 aPosition;
+        attribute mediump vec3 aNormal;
+        attribute mediump vec3 aTangent;
+        attribute mediump vec2 aUV;
+
+        uniform mediump mat4 uNormalMatrix;
+        uniform mediump mat4 uMVMatrix;
+        uniform mediump mat4 uPMatrix;
+
+        varying mediump vec3 vPosition;
+        varying mediump vec2 vUV;
+        varying mediump vec3 vNormal;
+        varying mediump vec3 vTangent;
+        varying mediump vec3 vBitangent;
+
+        void main(void) {
+            vPosition = vec3(uMVMatrix * vec4(aPosition, 1.0));
+            vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
+            vTangent = vec3(uNormalMatrix * vec4(aTangent, 1.0));
+            vBitangent = cross(vNormal, vTangent);
+            vUV = aUV;
+            gl_Position = uPMatrix * vec4(vPosition, 1.0);
+        }
+    </vertex>
+    <fragment>
+        uniform mediump vec3 diffuse;
+        uniform mediump vec3 ambient;
+        uniform mediump vec3 specular;
+        uniform mediump float specularComponent;
+        
+        uniform mediump vec3 uAmbient;
+        uniform mediump vec3 uLightDirection;
+        uniform mediump vec3 uLightColor;
+        
+        uniform sampler2D uDiffuse2D;
+        uniform sampler2D uOcclusion2D;
+        uniform sampler2D uNormal2D;
+        uniform sampler2D uSpecular2D;
+        uniform sampler2D uSpecularComponent2D;
+
+        varying mediump vec3 vPosition;
+        varying mediump vec2 vUV;
+        varying mediump vec3 vNormal;
+        varying mediump vec3 vTangent;
+        varying mediump vec3 vBitangent;
+
+        void main(void) {
+            //mediump vec4 texelColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+
+            //gl_FragColor = vec4(texelColor.rgb * vLighting, texelColor.a);
+            gl_FragColor = vec4(1, 0, 0, 1);
+        }
+    </fragment>
+</shaders>

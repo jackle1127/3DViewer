@@ -1,0 +1,23 @@
+<html>
+    <head>
+        <title>3D Viewer Test</title>
+        <meta charset="UTF-8">
+        <script src="sylvester.js"></script>
+        <script src="glUtils.js"></script>
+        <script src="3DViewer.js"></script>
+        <style>
+            #glCanvas {
+                width: 600px;
+                height: 600px;
+                background: #000;
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="glCanvas">
+        </canvas>
+    </body>
+    <script>
+        var viewer = new Viewer(document.getElementById("glCanvas"));
+    </script>
+</html>
