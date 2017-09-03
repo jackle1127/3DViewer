@@ -17,28 +17,38 @@
 
         void main(void) {
             vPosition = vec3(uMVMatrix * vec4(aPosition, 1.0));
-            vNormal = vec3(uNormalMatrix * vec4(aNormal, 1.0));
-            vTangent = vec3(uNormalMatrix * vec4(aTangent, 1.0));
-            vBitangent = cross(vNormal, vTangent);
+            vNormal = normalize(vec3(uNormalMatrix * vec4(aNormal, 1.0)));
+            vTangent = normalize(vec3(uNormalMatrix * vec4(aTangent, 1.0)));
+            vBitangent = normalize(cross(vTangent, vNormal));
+            vTangent = normalize(cross(vNormal, vBitangent)); // To make sure it's othogonal to nrm.
+
             vUV = aUV;
             gl_Position = uPMatrix * vec4(vPosition, 1.0);
         }
     </vertex>
     <fragment>
-        uniform mediump vec3 diffuse;
-        uniform mediump vec3 ambient;
-        uniform mediump vec3 specular;
-        uniform mediump float specularComponent;
+        uniform mediump vec4 uDiffuse;
+        uniform mediump vec4 uAmbient;
+        uniform mediump vec4 uSpecular;
+        uniform mediump float uGloss;
+        uniform mediump vec4 uEmission;
+        uniform mediump float uNormalMultiplier;
+        uniform mediump float uDissolve;
         
-        uniform mediump vec3 uAmbient;
-        uniform mediump vec3 uLightDirection;
-        uniform mediump vec3 uLightColor;
+        // View to world matrix to calculate reflection.
+        uniform mediump mat4 uVMMatrix;
+        uniform mediump vec4 uEnvironmentAmbient;
+        uniform mediump vec3 uLightDirections[6];
+        uniform mediump vec4 uLightColors[6];
+        uniform int uNumOfLights;
+        uniform samplerCube uSkybox;
         
         uniform sampler2D uDiffuse2D;
         uniform sampler2D uOcclusion2D;
         uniform sampler2D uNormal2D;
         uniform sampler2D uSpecular2D;
-        uniform sampler2D uSpecularComponent2D;
+        uniform sampler2D uGloss2D;
+        uniform sampler2D uEmission2D;
 
         varying mediump vec3 vPosition;
         varying mediump vec2 vUV;
@@ -46,11 +56,224 @@
         varying mediump vec3 vTangent;
         varying mediump vec3 vBitangent;
 
+        /*mediump vec4 getSpecularBlinn(mediump vec3 normal, mediump vec3 lightDir,
+                mediump vec3 viewVector, mediump vec4 lightColor, 
+                mediump vec4 specColor, mediump float specComp) {
+            mediump float lightFresnel = 1.0 - abs(dot(lightDir, normal));
+            
+            // Estimate fresnel based on surface hardness.
+            lightFresnel = pow(lightFresnel, (1110.0 - specComp) / 20.0);
+            
+            // At fresnel = 1, surface reflects 100%.
+            mediump vec4 finalSpecColor = mix (specColor, vec4(1.0, 1.0, 1.0, 1.0), lightFresnel);
+            mediump float finalRoughness = mix (specComp, 1000.0, lightFresnel);
+            
+            // Blinn phong specular.
+            mediump vec3 halfway = normalize(-(viewVector + lightDir));
+            mediump float specAmount = max(dot(halfway, normal), 0.0);
+            specAmount = pow(specAmount, 10.0* finalRoughness + .1);
+            return specAmount * finalSpecColor * lightColor;
+        }*/
+        
         void main(void) {
-            //mediump vec4 texelColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+            mediump vec3 viewVector = normalize(vPosition);
 
-            //gl_FragColor = vec4(texelColor.rgb * vLighting, texelColor.a);
-            gl_FragColor = vec4(1, 0, 0, 1);
+            mediump vec4 surfaceDiffuse = uDiffuse * texture2D(uDiffuse2D, vUV);
+            mediump vec4 surfaceAO = uAmbient * texture2D(uOcclusion2D, vUV);
+            mediump vec4 surfaceNormal = texture2D(uNormal2D, vUV);
+            mediump vec4 surfaceSpecColor = uSpecular * texture2D(uSpecular2D, vUV);
+            mediump float surfaceRoughness = 1.0 - uGloss * texture2D(uGloss2D, vUV).r;
+            mediump vec4 emission = uEmission * texture2D(uEmission2D, vUV);
+            
+            // Calculate surfaceNormal based on bump map.
+            mediump vec3 finalNormal = normalize(uNormalMultiplier 
+                    * ((surfaceNormal.r - .5) * vBitangent 
+                    + (surfaceNormal.g - .5) * vTangent)
+                    + (surfaceNormal.b - .5) * vNormal);
+
+            // These will acumulate through each light source.
+            mediump vec4 finalDiffuse = vec4(0.0, 0.0, 0.0, 1.0);
+            mediump vec4 finalSpecular = vec4(0.0, 0.0, 0.0, 1.0);
+            
+            // Ambient.
+            mediump float ambientFresnel = 1.0 - abs(dot(viewVector, finalNormal));
+            ambientFresnel = pow(ambientFresnel, 60.0 * (surfaceRoughness + .01));
+            // At fresnel = 1, surface reflects 100%.
+            mediump vec4 ambientSpecColor = mix (surfaceSpecColor, vec4(1.0, 1.0, 1.0, 1.0), ambientFresnel);
+            mediump float ambientSpecRough = mix (surfaceRoughness, 0.0, ambientFresnel);
+
+            mediump vec3 reflectionVector = reflect(viewVector, finalNormal);
+            reflectionVector = vec3(uVMMatrix * vec4(reflectionVector, 0));
+            
+            mediump vec4 specularAmbient = uEnvironmentAmbient
+                    * textureCube(uSkybox, reflectionVector * vec3(1.0, 1.0, -1.0),
+                    6.0 * ambientSpecRough);
+            specularAmbient *= ambientSpecColor;
+            
+            mediump vec4 diffuseAmbient = 
+                    uEnvironmentAmbient 
+                    * textureCube(uSkybox, vec3(uVMMatrix 
+                    * vec4(finalNormal, 0)) * vec3(1.0, 1.0, -1.0), 6.0);
+            diffuseAmbient *= surfaceDiffuse * surfaceAO;
+            
+            finalDiffuse += diffuseAmbient;
+            finalSpecular += specularAmbient;
+            
+            // Lighting.
+            // &lt; because of xml....
+            for (int i = 0; i &lt; 6; i++) {
+                mediump vec4 diffuseLighting = surfaceDiffuse *
+                        max(-dot(uLightDirections[i], finalNormal), 0.0) * uLightColors[i];
+                /*mediump vec4 lightSpecColor = getSpecularBlinn(finalNormal, uLightDirections[i],
+                        viewVector, uLightColors[i], surfaceSpecColor, surfaceRoughness);*/
+                
+                mediump float lightFresnel = 1.0 - abs(dot(uLightDirections[i], finalNormal));
+                
+                // Estimate fresnel based on surface hardness.
+                lightFresnel = pow(lightFresnel, 60.0 * (surfaceRoughness + .01));
+                
+                // At fresnel = 1, surface reflects 100%.
+                mediump vec4 finalSpecColor = mix (surfaceSpecColor,
+                        vec4(1.0, 1.0, 1.0, 1.0), lightFresnel);
+                finalSpecColor = surfaceSpecColor;
+                mediump float finalRoughness = mix (surfaceRoughness, 0.0, lightFresnel);
+                
+                // Blinn phong specular.
+                mediump vec3 halfway = normalize(-(viewVector + uLightDirections[i]));
+                mediump float specAmount = max(dot(halfway, finalNormal), 0.0);
+                specAmount = pow(specAmount, 120.0 / (finalRoughness+ .01));
+                
+                mediump vec4 finalSpec = specAmount * finalSpecColor * uLightColors[i];
+                
+                // To preserve energy. 
+                diffuseLighting *= vec4(1.0, 1.0, 1.0, 1.0) - finalSpecColor;
+                
+                finalDiffuse += diffuseLighting;
+                finalSpecular += finalSpec;
+            }
+            mediump vec4 finalColor = finalDiffuse + finalSpecular + emission;
+            
+            gl_FragColor = vec4(finalColor.rgb, mix(surfaceDiffuse.a, 1.0, uDissolve));
+            //gl_FragColor = vec4(finalNormal, 1.0);
+            //gl_FragColor = vec4(specularHighlight, specularHighlight, specularHighlight, 1.0);
+            //gl_FragColor = vec4(ambientFresnel, ambientFresnel, ambientFresnel, 1.0);
+            //gl_FragColor = vec4(vTangent / 2.0 + .5, 1.0);
+            //gl_FragColor = vec4(finalNormal, 1.0);
+            //gl_FragColor = finalDiffuse;
+            //gl_FragColor = textureCube(uSkybox, reflectionVector, 5.0);
         }
     </fragment>
+    <vertexcube>
+        attribute mediump vec2 aProjectedPos;
+        
+        // ProjectedPos / divisor = clip space.
+        uniform mediump vec2 uDivisor;
+        
+        varying mediump vec3 aViewVector;
+
+        void main(void) {
+            aViewVector = vec3(aProjectedPos, -1.0);
+            gl_Position = vec4(aProjectedPos / uDivisor, 1.0, 1.0);
+        }
+    </vertexcube>
+    <fragmentcube>
+        uniform mediump float uBackgroundLOD;
+        uniform samplerCube uSkybox;
+        uniform mediump mat4 uVMMatrix;
+        uniform mediump vec4 uAmbient;
+
+        varying mediump vec3 aViewVector;
+
+        void main(void) {
+            gl_FragColor = uAmbient * textureCube(uSkybox, vec3(uVMMatrix
+                    * vec4(aViewVector, 0)) * vec3(1.0, 1.0, -1.0), uBackgroundLOD);
+            //gl_FragColor = uVMMatrix * vec4(aViewVector, 0);
+        }
+    </fragmentcube>
+    <verteximage>
+        attribute mediump vec2 aVertexPos;
+        
+        varying mediump vec2 vUV;
+
+        void main(void) {
+            vUV = (aVertexPos + 1.0) / 2.0;
+            gl_Position = vec4(aVertexPos, 1.0, 1.0);
+        }
+    </verteximage>
+    <fragmentthreshold>
+        // Use the verteximage vertex shader to rasterize.
+        
+        uniform sampler2D uFrameBuffer;
+        uniform mediump float uThreshold;
+        uniform mediump float uSoftRange;
+        
+        varying mediump vec2 vUV;
+        
+        void main(void) {
+            mediump vec4 pixel = texture2D(uFrameBuffer, vUV);
+            mediump float weight = max(pixel.r, max(pixel.g, pixel.b));
+            weight = clamp((weight - (uThreshold - uSoftRange / 2.0)) / uSoftRange
+                    , 0.0, 1.0);
+            gl_FragColor = vec4((weight * pixel).rgb, 1.0);;
+            //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+            //gl_FragColor = pixel;
+        }
+    </fragmentthreshold>
+    <fragmentblurhorizontal>
+        // Blur horizontally.
+        // Use the verteximage vertex shader to rasterize.
+        
+        uniform sampler2D uFrameBuffer;
+        uniform mediump float uTexelSize;
+        
+        varying mediump vec2 vUV;
+        
+        void main(void) {
+            mediump vec4 pixel = texture2D(uFrameBuffer, vUV) * 99.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(uTexelSize, 0)) * 87.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(-uTexelSize, 0)) * 87.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(2.0 * uTexelSize, 0)) * 60.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(-2.0 * uTexelSize, 0)) * 60.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(3.0 * uTexelSize, 0)) * 32.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(-3.0 * uTexelSize, 0)) * 32.0;
+            pixel /= 457.0;
+            gl_FragColor = vec4(pixel.rgb, 1.0);
+        }
+    </fragmentblurhorizontal>
+    <fragmentblurvertical>
+        // Blur vertically.
+        // Use the verteximage vertex shader to rasterize.
+        
+        uniform sampler2D uFrameBuffer;
+        uniform mediump float uTexelSize;
+        
+        varying mediump vec2 vUV;
+        
+        void main(void) {
+            mediump vec4 pixel = texture2D(uFrameBuffer, vUV) * 99.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, uTexelSize)) * 87.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, -uTexelSize)) * 87.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, 2.0 * uTexelSize)) * 60.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, -2.0 * uTexelSize)) * 60.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, 3.0 * uTexelSize)) * 32.0;
+            pixel += texture2D(uFrameBuffer, vUV + vec2(0, -3.0 * uTexelSize)) * 32.0;
+            pixel /= 457.0;
+            gl_FragColor = vec4(pixel.rgb, 1.0);
+        }
+    </fragmentblurvertical>
+    <fragmentadd>
+        // Use the verteximage vertex shader to rasterize.
+        
+        uniform sampler2D uFrame1;
+        uniform sampler2D uFrame2;
+        uniform mediump float uFrame2Strength;
+        
+        varying mediump vec2 vUV;
+        
+        void main(void) {
+            mediump vec4 pixel = texture2D(uFrame1, vUV);
+            pixel += texture2D(uFrame2, vUV) * uFrame2Strength;
+            gl_FragColor = vec4(pixel.rgb, 1.0);
+        }
+    </fragmentadd>
 </shaders>

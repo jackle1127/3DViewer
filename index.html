@@ -1,23 +1,40 @@
 <html>
     <head>
         <title>3D Viewer Test</title>
-        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
         <script src="sylvester.js"></script>
         <script src="glUtils.js"></script>
         <script src="3DViewer.js"></script>
+        <script src="Obj-processor.js"></script>
         <style>
+            #html, body {
+                padding: 0;
+                margin: 0;
+            }
             #glCanvas {
-                width: 600px;
-                height: 600px;
-                background: #000;
+                background-color: black;
+                width: 100%;
+                height: 100%;
             }
         </style>
     </head>
     <body>
         <canvas id="glCanvas">
+            Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
         </canvas>
     </body>
     <script>
-        var viewer = new Viewer(document.getElementById("glCanvas"));
+        var vwr = new Viewer(document.getElementById("glCanvas"));
+        vwr.loadSkybox('front.jpg', 'back.jpg', 
+                'left.jpg', 'right.jpg',
+                'top.jpg', 'bottom.jpg');
+        vwr.directionalLights[0].color = [1, .9, .6, 1];
+        vwr.directionalLights[0].setDirection([.4, -.1, -.4]);
+        vwr.backgroundLOD = 0;
+
+        loadOBJ("", "frame.obj", "frame.mtl", vwr, function(mesh) {
+            mesh.rotation = [90, 0, 0];
+        });
+        vwr.start(1000/60); // 60FPS
     </script>
 </html>
