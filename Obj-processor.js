@@ -67,80 +67,69 @@ function objToMesh(objText, mtlText, texturePath, viewer, callback) {
     var newMesh = new Mesh(viewer);
     var submeshTable = {};
     var mtlLines = mtlText.split('\n');
-    var currentMaterial;
+    var currentSubmesh;
     // Create submeshes based off of materials.
     mtlLines.forEach(function(mtlLine) {
         mtlLine = mtlLine.trim().replace(/\s+/, ' ');
         if (mtlLine.startsWith('newmtl ')) {
-            currentMaterial = {
-                    "uuid": "87D95D6C-6BB4-4B8F-8166-A3A6945BA5E3",
-                    "type": "MeshPhongMaterial",
-                    "color": 16777215,
-                    "ambient": 16777215,
-                    "emissive": 0,
-                    "specular": 1118481,
-                    "shininess": 30,
-                    "opacity": 1,
-                    "transparent": false,
-                    "wireframe": false
-                };
+            currentSubmesh = new Submesh(newMesh);
             mtlLine = mtlLine.substring('newmtl '.length);
-            currentMaterial.name = mtlLine;
-            submeshTable[mtlLine] = currentMaterial;
+            currentSubmesh.name = mtlLine;
+            submeshTable[mtlLine] = currentSubmesh;
         } else if (mtlLine.startsWith('Ns ')) {
             mtlLine = mtlLine.substring('Ns '.length);
-            currentMaterial.gloss = parseFloat(mtlLine) / 1000;
+            currentSubmesh.gloss = parseFloat(mtlLine) / 1000;
         } else if (mtlLine.startsWith('d ')) {
             mtlLine = mtlLine.substring('d '.length);
-            currentMaterial.dissolve = parseFloat(mtlLine);
+            currentSubmesh.dissolve = parseFloat(mtlLine);
         } else if (mtlLine.startsWith('Ka ')) {
             mtlLine = mtlLine.substring('Ka '.length);
-            setMaterialAttribute(currentMaterial.ambient, mtlLine);
+            setMaterialAttribute(currentSubmesh.ambient, mtlLine);
         } else if (mtlLine.startsWith('Kd ')) {
             mtlLine = mtlLine.substring('Kd '.length);
-            setMaterialAttribute(currentMaterial.diffuse, mtlLine);
+            setMaterialAttribute(currentSubmesh.diffuse, mtlLine);
         } else if (mtlLine.startsWith('Ks ')) {
             mtlLine = mtlLine.substring('Ks '.length);
-            setMaterialAttribute(currentMaterial.specular, mtlLine);
+            setMaterialAttribute(currentSubmesh.specular, mtlLine);
         } else if (mtlLine.startsWith('Ke ')) {
             mtlLine = mtlLine.substring('Ke '.length);
-            setMaterialAttribute(currentMaterial.emission, mtlLine);
+            setMaterialAttribute(currentSubmesh.emission, mtlLine);
         } else if (mtlLine.startsWith('map_Ka ')) {
             mtlLine = mtlLine.substring('map_Ka '.length);
             setTexture(function(image, submesh) {
                     submesh.occlusion2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial); 
+                }, mtlLine, currentSubmesh); 
         } else if (mtlLine.startsWith('map_Kd ')) {
             mtlLine = mtlLine.substring('map_Kd '.length);
             setTexture(function(image, submesh) {
                     submesh.diffuse2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial); 
+                }, mtlLine, currentSubmesh); 
         } else if (mtlLine.startsWith('map_Ks ')) {
             mtlLine = mtlLine.substring('map_Ks '.length);
             setTexture(function(image, submesh) {
                     submesh.specular2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial); 
+                }, mtlLine, currentSubmesh); 
         } else if (mtlLine.startsWith('map_Ns ')) {
             mtlLine = mtlLine.substring('map_Ns '.length);
             setTexture(function(image, submesh) {
                     submesh.gloss2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial);
+                }, mtlLine, currentSubmesh);
         } else if (mtlLine.startsWith('map_Ke ')) {
             mtlLine = mtlLine.substring('map_Ke '.length);
             setTexture(function(image, submesh) {
                     submesh.emission2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial);
+                }, mtlLine, currentSubmesh);
         } else if (mtlLine.startsWith('map_Bump ')) {
             mtlLine = mtlLine.substring('map_Bump '.length);
             if (mtlLine.startsWith('-bm ')) {
                 mtlLine = mtlLine.substring('-bm  '.length);
                 var nextSpace = mtlLine.indexOf(' ');
-                currentMaterial.normalMultiplier = parseFloat(mtlLine.substring(0, nextSpace));
+                currentSubmesh.normalMultiplier = parseFloat(mtlLine.substring(0, nextSpace));
                 mtlLine = mtlLine.substring(nextSpace + 1);
             }
             setTexture(function(image, submesh) {
                     submesh.normal2D = createTexture(viewer.gl, image);
-                }, mtlLine, currentMaterial);
+                }, mtlLine, currentSubmesh);
         }
     });
     
@@ -176,13 +165,13 @@ function objToMesh(objText, mtlText, texturePath, viewer, callback) {
             addArgsToArray(uvArray, objLine);
         } else if (objLine.startsWith('usemtl ')) {
             objLine = objLine.substring('usemtl '.length);
-            currentMaterial = submeshTable[objLine];
+            currentSubmesh = submeshTable[objLine];
         } else if (objLine.startsWith('f ')) {
             objLine = objLine.substring('f '.length);
             var args = objLine.split(' ');
             // Create faces in a fan strip fashion.
             for (var i = 1; i <= args.length - 2; i++) {
-                createFace(currentMaterial.faces, positionArray, normalArray, uvArray,
+                createFace(currentSubmesh.faces, positionArray, normalArray, uvArray,
                         args[0], args[i], args[i + 1]);
             }
         }
