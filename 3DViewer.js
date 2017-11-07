@@ -53,7 +53,8 @@ function Viewer(canvas) {
 
     this.mvMatrix = Matrix.I(4);
     this.refreshRightUpVectors();
-    this.ambient = [.8, .8, .8, 1];
+    this.ambient = [1, 1, 1, 1];
+    this.backgroundIntensity = 1;
     this.directionalLights = []; // Maximum of 6 directional lights.
     var light = new DirectionalLight();
     light.setDirection([0, -1, -1]);
@@ -98,6 +99,8 @@ function Viewer(canvas) {
     
     this.gl.clearColor(this.ambient[0], this.ambient[1], this.ambient[2], this.ambient[3]);
     this.gl.clearDepth(1.0);
+    this.gl.enable(this.gl.CULL_FACE);
+    this.gl.cullFace(this.gl.BACK);
     this.gl.enable(this.gl.DEPTH_TEST);
     this.gl.depthFunc(this.gl.LEQUAL);
     this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
@@ -114,11 +117,11 @@ function Viewer(canvas) {
     this.prevTime = (new Date()).getTime();
     this.countFPS = false;
     this.bloomEnabled = true;
-    this.bloomThreshold = .95;
-    this.bloomBlurIterations = 4;
+    this.bloomThreshold = .96;
+    this.bloomBlurIterations = 1;
     // Multiplying bloomSize with texel size so there won't be a need to pass an extra parameter into the shader.
-    this.bloomSize = 6;
-    this.bloomIntesity = .4;
+    this.bloomSize = 2.2;
+    this.bloomIntesity = .3;
     this.bloomSoftRange = .04;
     
     this.updateCamera = function() {
@@ -273,16 +276,17 @@ Viewer.prototype.setPerspectiveMatrix = function() {
     var horizontal = vertical * this.width / this.height;
     // To divide the projected position by and get -1 to 1 clipspace coordinate.
     this.screenDivisor = [horizontal, vertical];
-    this.projectedPos = [-horizontal, vertical, 
-            horizontal, vertical,
+    this.projectedPos = [-horizontal, -vertical, 
             horizontal, -vertical,
-            -horizontal, -vertical];
+            horizontal, vertical,
+            -horizontal, vertical];
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.projectedPosBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER,
             new Float32Array(this.projectedPos), this.gl.STATIC_DRAW);
 }
 
 Viewer.prototype.drawScene = function() {
+    
     function applyRotation(viewer) {
         rotateMatrix(viewer.mvMatrix, viewer.pitch, [1, 0, 0]);
         rotateMatrix(viewer.mvMatrix, -viewer.yaw, [0, 1, 0]);
@@ -311,7 +315,7 @@ Viewer.prototype.drawScene = function() {
     this.gl.uniform1f(this.gl.getUniformLocation(this.shaderProgramCube, "uBackgroundLOD"), this.backgroundLOD);
     
     this.gl.uniform2fv(this.gl.getUniformLocation(this.shaderProgramCube, "uDivisor"), this.screenDivisor);
-    this.gl.uniform4fv(this.gl.getUniformLocation(this.shaderProgramCube, "uAmbient"), this.ambient);
+    this.gl.uniform1f(this.gl.getUniformLocation(this.shaderProgramCube, "uBackgroundIntensity"), this.backgroundIntensity);
     this.gl.uniformMatrix4fv(this.gl.getUniformLocation(this.shaderProgramCube, "uVMMatrix")
             , false, VMMatrix.flatten());
     
@@ -491,6 +495,22 @@ Viewer.prototype.refreshRightUpVectors = function() {
 // Takes in image paths for the skybox.
 // Skybox is a cubemap.
 Viewer.prototype.loadSkybox = function(front, back, left, right, top, bottom) {
+    var DISTRIBUTION_TEXTURE_SIZE = 512;
+    
+    // Create a m x 1 texture to sample the weight went generating environment maps.
+    // Func is the distribution function.
+    function createDistributionTexture(func, size, gl) {
+        var newTexture = gl.createTexture();
+        var pixels = [];
+        for (var i = 0; i < size; i++) {
+            var val = func(i / (size - 1));
+            pixels.push(val);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, newTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, size, 1, 0, gl.ALPHA, gl.FLOAT,
+                new Float32Array(pixels));
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
     var posX = new Image();
     var negX = new Image();
     var posY = new Image();
@@ -504,7 +524,19 @@ Viewer.prototype.loadSkybox = function(front, back, left, right, top, bottom) {
         // Wait for all 6 to load.
         count ++;
         if (count < 6) return;
+        
+        thisViewer.stop(); // Stop drawing the scene to borrow the gl context for a bit.
+        
+        
+        // To create the diffuse map.
+        // alpha = 0 means center.
+        var irradianceFunction = function(alpha) {
+            return Math.cos(alpha * 1.5707963);
+        };
+        //var irradianceFilter = createDistributionTexture(
+        
         thisViewer.skybox = createCubemap(thisViewer.gl, posX, negX, posY, negY, posZ, negZ);
+        thisViewer.start();
     };
     
     posX.onload = callback;
@@ -754,18 +786,6 @@ DirectionalLight.prototype.setDirection = function(direction) {
     this.direction = $V(direction);
 }
 
-function copyTexture(viewer, source, destination) {
-    viewer.gl.bindFramebuffer(viewer.gl.GL_FRAMEBUFFER, viewer.frameBuffer);
-    viewer.gl.framebufferTexture2D(viewer.gl.GL_READ_FRAMEBUFFER, viewer.gl.COLOR_ATTACHMENT0,
-            viewer.gl.TEXTURE_2D, source, 0);
-    viewer.gl.framebufferTexture2D(viewer.gl.GL_DRAW_FRAMEBUFFER, viewer.gl.COLOR_ATTACHMENT1,
-            viewer.gl.TEXTURE_2D, destination, 0);
-    viewer.gl.drawBuffer(viewer.gl.COLOR_ATTACHMENT1);
-    viewer.gl.blitFramebuffer(0, 0, viewer.width, viewer.height,
-            0, 0, viewer.width, viewer.height,
-            viewer.gl.COLOR_BUFFER_BIT, viewer.gl.NEAREST);
-}
-
 function createSinglePixelTexture(gl, color) {
     var newTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, newTexture);
@@ -840,9 +860,8 @@ function createEmptyCubemap(gl, color) {
     gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
             0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(color));
 
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D, null);
     return newCubemap;
 }
