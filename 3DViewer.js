@@ -1,6 +1,7 @@
 // shaders variable has to be loaded by the php file.
 var VERTEX_SHADER = shaders['vertex'];
-var FRAGMENT_SHADER = shaders['fragment'];
+// Define the number of light macro here to compile with the exact number of lights needed.
+var FRAGMENT_SHADER = '#define NUM_OF_LIGHTS ' + NUM_OF_LIGHTS + '\n' + shaders['fragment'];
 var VERTEX_CUBE_SHADER = shaders['vertexcube'];
 var FRAGMENT_CUBE_SHADER = shaders['fragmentcube'];
 var VERTEX_IMAGE = shaders['verteximage'];
@@ -60,7 +61,7 @@ function Viewer(canvas) {
     light.setDirection([0, -1, -1]);
     light.color = [.4, .4, .4, 1];
     this.directionalLights.push(light);
-    this.backgroundLOD = 0; // To blur it.
+    this.backgroundLOD = 0;
     
     this.shaderProgram = createShaderProgram(this.gl, VERTEX_SHADER, FRAGMENT_SHADER, 'Geometry');
     this.shaderProgramCube = createShaderProgram(this.gl, VERTEX_CUBE_SHADER, FRAGMENT_CUBE_SHADER, 'Cubemap');
@@ -95,6 +96,7 @@ function Viewer(canvas) {
     this.frameBuffer = Array(3);
     this.depthBuffer = Array(3);
     this.frameTexture = Array(3);
+    this.postProcessingWidth = 220;
     this.resizeCanvas();
     
     this.gl.clearColor(this.ambient[0], this.ambient[1], this.ambient[2], this.ambient[3]);
@@ -114,15 +116,16 @@ function Viewer(canvas) {
     this.defaultEmission2D = createSinglePixelTexture(this.gl, [255, 255, 255, 255]);
     this.skybox = createEmptyCubemap(this.gl, [127, 127, 127, 255]);
     
+    // The height for post processing will be calculated dynamically.
     this.prevTime = (new Date()).getTime();
     this.countFPS = false;
     this.bloomEnabled = true;
-    this.bloomThreshold = .96;
-    this.bloomBlurIterations = 1;
+    this.bloomThreshold = .97;
+    this.bloomBlurIterations = 5;
     // Multiplying bloomSize with texel size so there won't be a need to pass an extra parameter into the shader.
-    this.bloomSize = 2.2;
-    this.bloomIntesity = .3;
-    this.bloomSoftRange = .04;
+    this.bloomSize = 1.7;
+    this.bloomIntesity = .84;
+    this.bloomSoftRange = .01;
     
     this.updateCamera = function() {
         this.distance = lerpF(this.distance, this.distanceTarget, this.transformAlpha);
@@ -240,11 +243,13 @@ Viewer.prototype.resizeCanvas = function() {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     
-    this.gl.viewport(0, 0, this.width, this.height);
     this.setPerspectiveMatrix(this.width, this.height, this.fov, .1, 100);
     
     // Create image processing buffers.
     // Need 3 frame buffers and textures.
+    // postProcessingWidth was set at the beginning.
+    this.postProcessingHeight = parseInt(this.postProcessingWidth * this.height / this.width);
+    this.postProcessingTexelSize = [1 / this.postProcessingWidth, 1 / this.postProcessingHeight];
     for (var i = 0; i < 3; i++) {
         if (this.frameBuffer[i]) {
             this.gl.deleteFramebuffer(this.frameBuffer[i]);
@@ -252,7 +257,16 @@ Viewer.prototype.resizeCanvas = function() {
             this.gl.deleteTexture(this.frameTexture[i]);
         }
         this.frameBuffer[i] = this.gl.createFramebuffer();
-        this.frameTexture[i] = createImageProcessingTexture(this.gl, this.width, this.height);
+        var frameWidth, frameHeight;
+        if (i == 0) {
+            frameWidth = this.width;
+            frameHeight = this.height;
+        } else {
+            // For the bloom framebuffers, we don't need very large frames.
+            frameWidth = this.postProcessingWidth;
+            frameHeight = this.postProcessingHeight;
+        }
+        this.frameTexture[i] = createImageProcessingTexture(this.gl, frameWidth, frameHeight);
         //this.frameTexture1 = createImageProcessingTexture(this.gl, 512, 512);
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.frameBuffer[i]);
         this.gl.framebufferTexture2D(this.gl.FRAMEBUFFER, this.gl.COLOR_ATTACHMENT0,
@@ -260,7 +274,7 @@ Viewer.prototype.resizeCanvas = function() {
         this.depthBuffer[i] = this.gl.createRenderbuffer();
         this.gl.bindRenderbuffer(this.gl.RENDERBUFFER, this.depthBuffer[i]);
         this.gl.renderbufferStorage(this.gl.RENDERBUFFER, 
-                this.gl.DEPTH_COMPONENT16, this.width, this.height);
+                this.gl.DEPTH_COMPONENT16, frameWidth, frameHeight);
         this.gl.framebufferRenderbuffer(this.gl.FRAMEBUFFER, this.gl.DEPTH_ATTACHMENT,
                 this.gl.RENDERBUFFER, this.depthBuffer[i]);
     }
@@ -270,7 +284,6 @@ Viewer.prototype.resizeCanvas = function() {
 
 Viewer.prototype.setPerspectiveMatrix = function() {
     this.perspectiveMatrix = makePerspective(this.fov, this.width / this.height, .1, 100);
-    this.texelSize = [1 / this.width, 1 / this.height];
     
     var vertical = Math.tan(this.fov / 2 * Math.PI / 180);
     var horizontal = vertical * this.width / this.height;
@@ -280,13 +293,14 @@ Viewer.prototype.setPerspectiveMatrix = function() {
             horizontal, -vertical,
             horizontal, vertical,
             -horizontal, vertical];
+    
+    // For the cubemap.
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.projectedPosBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER,
             new Float32Array(this.projectedPos), this.gl.STATIC_DRAW);
 }
 
 Viewer.prototype.drawScene = function() {
-    
     function applyRotation(viewer) {
         rotateMatrix(viewer.mvMatrix, viewer.pitch, [1, 0, 0]);
         rotateMatrix(viewer.mvMatrix, -viewer.yaw, [0, 1, 0]);
@@ -296,8 +310,9 @@ Viewer.prototype.drawScene = function() {
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.frameBuffer[0]);
     }
     
+    this.gl.viewport(0, 0, this.width, this.height);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-
+    // Geometry rendering viewport.
     this.mvMatrix = Matrix.I(4);
     translateMatrix(this.mvMatrix, $V([0, 0, -this.distance]));
     applyRotation(this);
@@ -340,7 +355,7 @@ Viewer.prototype.drawScene = function() {
     var lightDirArray = [];
     var lightColorArray = [];
     var thisMVMatrix = this.mvMatrix;
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < NUM_OF_LIGHTS; i++) {
         if (i < this.directionalLights.length) {
             var light = this.directionalLights[i];
             lightColorArray = lightColorArray.concat(light.color);
@@ -371,6 +386,8 @@ Viewer.prototype.drawScene = function() {
     
     if (this.bloomEnabled) {
 
+        // Post processing viewport.
+        this.gl.viewport(0, 0, this.postProcessingWidth, this.postProcessingHeight);
         // Threshold.
         this.gl.useProgram(this.shaderProgramThreshold);
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.frameBuffer[1]);
@@ -393,8 +410,8 @@ Viewer.prototype.drawScene = function() {
         
         // Blur.
         var swappingIndex = 1; // XOR this with 3 will make it oscillate between 1 and 2.
-        var horizontalTexel = this.texelSize[0] * this.bloomSize;
-        var verticalTexel = this.texelSize[1] * this.bloomSize;
+        var horizontalTexel = this.postProcessingTexelSize[0] * this.bloomSize;
+        var verticalTexel = this.postProcessingTexelSize[1] * this.bloomSize;
         for (var i = 1; i <= this.bloomBlurIterations; i++) {
             this.gl.bindFramebuffer(this.gl.FRAMEBUFFER,
                     this.frameBuffer[swappingIndex ^ 3]);
@@ -435,6 +452,8 @@ Viewer.prototype.drawScene = function() {
             swappingIndex ^= 3;
         }
 
+        // Final render to screen viewport.
+        this.gl.viewport(0, 0, this.width, this.height);
         // Add.
         this.gl.useProgram(this.shaderProgramAdd);
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
@@ -790,8 +809,8 @@ function createSinglePixelTexture(gl, color) {
     var newTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, newTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(color));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D, null);
     return newTexture;
 }
@@ -816,6 +835,8 @@ function createImageProcessingTexture(gl, width, height) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     //gl.generateMipmap(gl.TEXTURE_2D);
     gl.bindTexture(gl.TEXTURE_2D, null);
     return newTexture;

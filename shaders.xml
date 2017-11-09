@@ -27,8 +27,10 @@
         }
     </vertex>
     <fragment>
-        const mediump float PI = 3.1415926535;
-        const mediump float MIPS_COUNT = 9.0;
+        #define PI 3.1415926535
+        #define MIPS_COUNT 9.0
+        #define FRESNEL_ROUGHNESS_POWER 20.0
+        
         uniform mediump vec4 uDiffuse;
         uniform mediump vec4 uAmbient;
         uniform mediump vec4 uSpecular;
@@ -40,8 +42,8 @@
         // View to world matrix to calculate reflection.
         uniform mediump mat4 uVMMatrix;
         uniform mediump vec4 uEnvironmentAmbient;
-        uniform mediump vec3 uLightDirections[6];
-        uniform mediump vec4 uLightColors[6];
+        uniform mediump vec3 uLightDirections[NUM_OF_LIGHTS];
+        uniform mediump vec4 uLightColors[NUM_OF_LIGHTS];
         uniform int uNumOfLights;
         uniform samplerCube uSkybox;
         
@@ -94,20 +96,23 @@
         mediump vec4 brdfCookTorrance(mediump vec3 normal, mediump vec3 lightDir,
                 mediump vec3 viewVector, mediump vec4 lightColor, 
                 mediump vec4 specColor, mediump float roughness) {
-            roughness = roughness * roughness;
             mediump vec3 halfway = normalize(lightDir + viewVector);
             mediump float nDotL = clampDot(normal, lightDir) + .001;
             mediump float nDotV = clampDot(normal, viewVector) + .001;
             //nDotL = nDotV = 1.0;
             // Fresnel component.
             mediump float fComponent = fresnelSchlick(halfway, viewVector);
+            fComponent = pow(fComponent, 1.0 + roughness * FRESNEL_ROUGHNESS_POWER);
+
+            roughness = roughness * roughness;
+
             // Distribution component.
             mediump float dComponent = distributionGGX(halfway, normal, roughness);
             // Geometric component.
             mediump float gComponent = geometricSmith(normal, lightDir,
                     viewVector, roughness);
             
-            fComponent = pow(fComponent, roughness * 10.0);
+            //fComponent = pow(fComponent, roughness * FRESNEL_ROUGHNESS_POWER);
             // Modifying the surface specular color instead of putting it in the Fresnel component.
             specColor += (1.0 - specColor) * fComponent;
             
@@ -119,13 +124,14 @@
         mediump vec4 brdfCookTorranceOptimized(mediump vec3 normal, mediump vec3 lightDir,
                 mediump vec3 viewVector, mediump vec4 lightColor, 
                 mediump vec4 specColor, mediump float roughness) {
-            roughness = roughness * roughness;
             mediump vec3 halfway = normalize(lightDir + viewVector);
             mediump float nDotL = clampDot(normal, lightDir) + .001;
             mediump float nDotV = clampDot(normal, viewVector) + .001;
             
             mediump float fComponent = fresnelSchlick(halfway, viewVector);
-            fComponent = pow(fComponent, roughness * 10.0);
+            fComponent = pow(fComponent, 1.0 + roughness * FRESNEL_ROUGHNESS_POWER);
+            
+            roughness = roughness * roughness;
             specColor += (1.0 - specColor) * fComponent;
             
             roughness = roughness * roughness; // roughness = roughness ^ 2 now.
@@ -181,7 +187,9 @@
             mediump vec4 finalColor = vec4(vec3(emission), 1.0);
             
             // Ambient.
-            mediump float environmentFresnel = fresnelSchlick(finalNormal, -viewVector);;
+            mediump float environmentFresnel = fresnelSchlick(finalNormal, -viewVector);
+            environmentFresnel = pow(environmentFresnel, 1.0 + surfaceRoughness * FRESNEL_ROUGHNESS_POWER);
+            //environmentFresnel = pow(environmentFresnel, surfaceRoughness * FRESNEL_ROUGHNESS_POWER);
             // At fresnel = 1, surface reflects 100%.
             mediump vec4 environmentSpecColor = mix (surfaceSpecColor, vec4(1.0), environmentFresnel);
 
@@ -190,7 +198,7 @@
             
             mediump vec4 specularEnvironment = uEnvironmentAmbient * environmentSpecColor
                     * textureCube(uSkybox, reflectionVector * vec3(1.0, 1.0, -1.0),
-                    MIPS_COUNT * surfaceRoughness);
+                    MIPS_COUNT * surfaceRoughness * 8.0);
             
             mediump vec4 diffuseEnvironment = 
                     uEnvironmentAmbient 
@@ -202,7 +210,7 @@
             
             // Light sources.
             // &lt; because of xml....
-            for (int i = 0; i &lt; 6; i++) {
+            for (int i = 0; i &lt; NUM_OF_LIGHTS; i++) {
                 mediump vec4 diffuseReflection = surfaceDiffuse *
                         max(-dot(uLightDirections[i], finalNormal), 0.0) * uLightColors[i];
                 mediump vec4 specularReflection = brdfCookTorranceOptimized(finalNormal, -uLightDirections[i],
@@ -211,6 +219,7 @@
             }
             
             gl_FragColor = vec4(finalColor.rgb, mix(surfaceDiffuse.a, 1.0, uDissolve));
+            //gl_FragColor = vec4(vec3(environmentFresnel), 1.0);
         }
     </fragment>
     <vertexcube>
@@ -261,19 +270,17 @@
         
         void main(void) {
             mediump vec4 pixel = texture2D(uFrameBuffer, vUV);
-            mediump float weight = max(pixel.r, max(pixel.g, pixel.b));
+            mediump float weight = 0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b;
             weight = clamp((weight - (uThreshold - uSoftRange / 2.0)) / uSoftRange
                     , 0.0, 1.0);
             gl_FragColor = vec4((weight * pixel).rgb, 1.0);;
-            //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
-            //gl_FragColor = pixel;
         }
     </fragmentthreshold>
     <fragmentblurhorizontal>
         // Blur horizontally.
         // Use the verteximage vertex shader to rasterize.
         
-        const mediump float halfWindowSize = 8.0;
+        const mediump float halfWindowSize = 5.0;
         
         uniform sampler2D uFrameBuffer;
         uniform mediump float uTexelSize;
@@ -294,7 +301,7 @@
         // Blur vertically.
         // Use the verteximage vertex shader to rasterize.
         
-        const mediump float halfWindowSize = 8.0;
+        const mediump float halfWindowSize = 5.0;
 
         uniform sampler2D uFrameBuffer;
         uniform mediump float uTexelSize;

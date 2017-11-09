@@ -183,16 +183,3 @@ function objToMesh(objText, mtlText, texturePath, viewer, callback) {
     callback(newMesh);
     //return newMesh;
 }
-
-/*function loadOBJ(path, objFileName, mtlFileName, viewer, callback) {
-    var obj, mtl;
-    // Load materials first.
-    ajaxGet("get-file.php?fileName=" + path + mtlFileName, function(mtlResponse) {
-        mtl = mtlResponse;
-        ajaxGet("get-file.php?fileName=" + path + objFileName, function(objResponse) {
-            obj = objResponse;
-            callback(objToMesh(obj, mtl, path, viewer));
-        }, true);
-    }, true);
-    
-}*/
