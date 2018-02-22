@@ -48,7 +48,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 $mtlFile = basename($mtlFile[0]);
                 $directory = "$directory";
                 //$src = "../../plugins/Viewer3D/Viewer3D.php?absoluteDirectory=$ABSOLUTE_DIRECTORY&path=$directory&obj=".$objFile."&mtl=".$mtlFile;
-                //$src = "../../plugins/Viewer3D/top.jpg";
+                //$src = "../../plugins/Viewer3D/top.png";
                 //echo "<iframe width=\"100%\" height=\"400\" src=\"$src\"></iframe>";
                 $viewerArgs = new stdClass();
                 $viewerArgs -> directory = $directory;
@@ -63,6 +63,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     protected function _showViewer($args) {
         // PLUGIN_DIRECTORY is for the html to use.
         $PLUGIN_DIRECTORY = '../../plugins/Viewer3D/';
+        $clickToView = $PLUGIN_DIRECTORY . 'click_to_view_3d.png';
         $width = '100%';
         $height = '400px';
         
@@ -86,36 +87,42 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
             <script src='<?php echo $PLUGIN_DIRECTORY?>glUtils.js'></script>
             <script src='<?php echo $PLUGIN_DIRECTORY?>3DViewer.js'></script>
             <script src='<?php echo $PLUGIN_DIRECTORY?>Obj-processor.js'></script>
-            <canvas id='glCanvas' style='width: <?php echo $width?>; height: <?php echo $height?>'>
-                Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
+            <canvas id='glCanvas' style='width: <?php echo $width?>; height: <?php echo $height?>;
+                    background: url("<?php echo $clickToView?>") no-repeat center; background-size: cover;
+                    cursor: pointer;'
+                    onclick='clickToView(this)'>                
             </canvas>
             <script>
-                // Create model viewer.
-                var modelViewer = new Viewer(document.getElementById("glCanvas"));
-                modelViewer.loadSkybox('<?php echo $PLUGIN_DIRECTORY?>front.jpg', '<?php echo $PLUGIN_DIRECTORY?>back.jpg', 
-                        '<?php echo $PLUGIN_DIRECTORY?>left.jpg', '<?php echo $PLUGIN_DIRECTORY?>right.jpg',
-                        '<?php echo $PLUGIN_DIRECTORY?>top.jpg', '<?php echo $PLUGIN_DIRECTORY?>bottom.jpg');
-                modelViewer.directionalLights[0].color = [0.439, 0.408, 0.267, 1];
-                modelViewer.directionalLights[0].setDirection([.3, -.3, -.9]);
-                modelViewer.directionalLights[0].fixed = true;
-                modelViewer.directionalLights.push(new DirectionalLight());
-                modelViewer.directionalLights[1].color = [0.439, 0.408, 0.267, 1];
-                modelViewer.directionalLights[1].setDirection([.3, -.3, .9]);
-                modelViewer.directionalLights[1].fixed = true;
-                modelViewer.backgroundLOD = 0;
-                //modelViewer.ambient = [0, 0, 0, 1];
-                
-                objToMesh(modelJson['objText'], modelJson['mtlText'], modelJson['path'],
-                    modelViewer, function(mesh) {
-                        mesh.rotation = [90, 0, 0];
-                    });
-                window.onresize = function() {
-                    modelViewer.resizeCanvas();
-                };
-                modelViewer.start(1000/60); // 60FPS
+                var modelViewer;
+                function clickToView(element) {
+                    element.onclick = null;
+                    element.style.cursor = 'default';
+                    // Create model viewer.
+                    modelViewer = new Viewer(document.getElementById("glCanvas"));
+                    modelViewer.loadSkybox('<?php echo $PLUGIN_DIRECTORY?>front.png', '<?php echo $PLUGIN_DIRECTORY?>back.png', 
+                            '<?php echo $PLUGIN_DIRECTORY?>left.png', '<?php echo $PLUGIN_DIRECTORY?>right.png',
+                            '<?php echo $PLUGIN_DIRECTORY?>top.png', '<?php echo $PLUGIN_DIRECTORY?>bottom.png');
+                    modelViewer.directionalLights[0].color = [1, 1, .85, 1];
+                    modelViewer.directionalLights[0].setDirection([-.3, -.15, -.3]);
+                    modelViewer.directionalLights[0].fixed = true;
+                    modelViewer.directionalLights.push(new DirectionalLight());
+                    modelViewer.directionalLights[1].color = [0.439, 0.408, 0.267, 1];
+                    modelViewer.directionalLights[1].setDirection([.3, -.3, .9]);
+                    modelViewer.directionalLights[1].fixed = true;
+                    modelViewer.backgroundLOD = 0;
+                    //modelViewer.ambient = [0, 0, 0, 1];
+                    
+                    objToMesh(modelJson['objText'], modelJson['mtlText'], modelJson['path'],
+                        modelViewer, function(mesh) {
+                            //mesh.rotation = [90, 0, 0];
+                        });
+                    window.onresize = function() {
+                        modelViewer.resizeCanvas();
+                    };
+                    modelViewer.start(1000/60); // 60FPS
+                }
             </script>
         <?php
-        return htmlString;
     }
 }
 ?>

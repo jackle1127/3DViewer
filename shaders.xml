@@ -1,27 +1,27 @@
 <shaders>
     <vertex>
-        attribute mediump vec3 aPosition;
-        attribute mediump vec3 aNormal;
-        attribute mediump vec3 aTangent;
-        attribute mediump vec2 aUV;
+        precision mediump float;
+        attribute vec3 aPosition;
+        attribute vec3 aNormal;
+        attribute vec3 aTangent;
+        attribute vec2 aUV;
 
-        uniform mediump mat4 uNormalMatrix;
-        uniform mediump mat4 uMVMatrix;
-        uniform mediump mat4 uPMatrix;
+        uniform mat4 uNormalMatrix;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
 
-        varying mediump vec3 vPosition;
-        varying mediump vec2 vUV;
-        varying mediump vec3 vNormal;
-        varying mediump vec3 vTangent;
-        varying mediump vec3 vBitangent;
+        varying vec3 vPosition;
+        varying vec2 vUV;
+        varying vec3 vNormal;
+        varying vec3 vTangent;
+        varying vec3 vBitangent;
 
         void main(void) {
             vPosition = vec3(uMVMatrix * vec4(aPosition, 1.0));
-            vNormal = normalize(vec3(uNormalMatrix * vec4(aNormal, 1.0)));
-            vTangent = normalize(vec3(uNormalMatrix * vec4(aTangent, 1.0)));
+            vNormal = normalize(mat3(uNormalMatrix) * aNormal);
+            vTangent = normalize(mat3(uNormalMatrix) * aTangent);
             vBitangent = normalize(cross(vTangent, vNormal));
             vTangent = normalize(cross(vNormal, vBitangent)); // To make sure it's othogonal to nrm.
-
             vUV = aUV;
             gl_Position = uPMatrix * vec4(vPosition, 1.0);
         }
@@ -29,22 +29,22 @@
     <fragment>
         #define PI 3.1415926535
         #define MIPS_COUNT 9.0
-        #define FRESNEL_ROUGHNESS_POWER 20.0
-        
-        uniform mediump vec4 uDiffuse;
-        uniform mediump vec4 uAmbient;
-        uniform mediump vec4 uSpecular;
-        uniform mediump float uGloss;
-        uniform mediump vec4 uEmission;
-        uniform mediump float uNormalMultiplier;
-        uniform mediump float uDissolve;
+        #define FRESNEL_ROUGHNESS_POWER 8.0
+        precision mediump float;
+
+        uniform vec4 uDiffuse;
+        uniform vec4 uAmbient;
+        uniform vec4 uSpecular;
+        uniform float uGloss;
+        uniform vec4 uEmission;
+        uniform float uNormalMultiplier;
+        uniform float uDissolve;
         
         // View to world matrix to calculate reflection.
-        uniform mediump mat4 uVMMatrix;
-        uniform mediump vec4 uEnvironmentAmbient;
-        uniform mediump vec3 uLightDirections[NUM_OF_LIGHTS];
-        uniform mediump vec4 uLightColors[NUM_OF_LIGHTS];
-        uniform int uNumOfLights;
+        uniform mat4 uVMMatrix;
+        uniform vec4 uEnvironmentAmbient;
+        uniform vec3 uLightDirections[NUM_OF_LIGHTS];
+        uniform vec4 uLightColors[NUM_OF_LIGHTS];
         uniform samplerCube uSkybox;
         
         uniform sampler2D uDiffuse2D;
@@ -54,62 +54,62 @@
         uniform sampler2D uGloss2D;
         uniform sampler2D uEmission2D;
 
-        varying mediump vec3 vPosition;
-        varying mediump vec2 vUV;
-        varying mediump vec3 vNormal;
-        varying mediump vec3 vTangent;
-        varying mediump vec3 vBitangent;
+        varying vec3 vPosition;
+        varying vec2 vUV;
+        varying vec3 vNormal;
+        varying vec3 vTangent;
+        varying vec3 vBitangent;
 
-        mediump float clampDot(mediump vec3 v1, mediump vec3 v2) {
+        float clampDot(vec3 v1, vec3 v2) {
             return min(max(dot(v1, v2), 0.0), 1.0);
         }
         
         // Argument VECTOR is up to the calling function.
-        mediump float fresnelSchlick(mediump vec3 vector, mediump vec3 viewVector) {
+        float fresnelSchlick(vec3 vector, vec3 viewVector) {
             return pow(1.0 - clampDot(vector, viewVector), 5.0);
         }
 
-        mediump float distributionGGX(mediump vec3 halfway, mediump vec3 normal,
-                mediump float roughness) {
-            mediump float nDotH2 = clampDot(normal, halfway);
+        float distributionGGX(vec3 halfway, vec3 normal,
+                float roughness) {
+            float nDotH2 = clampDot(normal, halfway);
             nDotH2 = nDotH2 * nDotH2;
             roughness = roughness * roughness; // roughness = roughness ^ 2 now.
-            mediump float denominator = nDotH2 * (roughness - 1.0) + 1.0;
+            float denominator = nDotH2 * (roughness - 1.0) + 1.0;
             return roughness / (PI * denominator * denominator);
         }
         
         // Argument VECTOR will be changed because Smith uses the same equation for 2 different vectors.
-        mediump float geometricSmithGGX(mediump vec3 vector, mediump vec3 normal,
-                mediump float roughness) {
-            mediump float nDotV = clampDot(normal, vector);
+        float geometricSmithGGX(vec3 vector, vec3 normal,
+                float roughness) {
+            float nDotV = clampDot(normal, vector);
             return 2.0 * nDotV / (nDotV + sqrt(roughness + (1.0 - roughness) * nDotV));
         }
 
-        mediump float geometricSmith(mediump vec3 normal, mediump vec3 lightDir,
-                mediump vec3 viewVector, mediump float roughness) {
+        float geometricSmith(vec3 normal, vec3 lightDir,
+                vec3 viewVector, float roughness) {
             roughness = roughness * roughness;
             return geometricSmithGGX(lightDir, normal, roughness) * 
                     geometricSmithGGX(viewVector, normal, roughness);
         }
 
         // We use the common Cook-Torrance BRDF for this.
-        mediump vec4 brdfCookTorrance(mediump vec3 normal, mediump vec3 lightDir,
-                mediump vec3 viewVector, mediump vec4 lightColor, 
-                mediump vec4 specColor, mediump float roughness) {
-            mediump vec3 halfway = normalize(lightDir + viewVector);
-            mediump float nDotL = clampDot(normal, lightDir) + .001;
-            mediump float nDotV = clampDot(normal, viewVector) + .001;
+        vec4 brdfCookTorrance(vec3 normal, vec3 lightDir,
+                vec3 viewVector, vec4 lightColor, 
+                vec4 specColor, float roughness) {
+            vec3 halfway = normalize(lightDir + viewVector);
+            float nDotL = clampDot(normal, lightDir) + .0001;
+            float nDotV = clampDot(normal, viewVector) + .0001;
             //nDotL = nDotV = 1.0;
             // Fresnel component.
-            mediump float fComponent = fresnelSchlick(halfway, viewVector);
+            float fComponent = fresnelSchlick(halfway, viewVector);
             fComponent = pow(fComponent, 1.0 + roughness * FRESNEL_ROUGHNESS_POWER);
 
             roughness = roughness * roughness;
 
             // Distribution component.
-            mediump float dComponent = distributionGGX(halfway, normal, roughness);
+            float dComponent = distributionGGX(halfway, normal, roughness);
             // Geometric component.
-            mediump float gComponent = geometricSmith(normal, lightDir,
+            float gComponent = geometricSmith(normal, lightDir,
                     viewVector, roughness);
             
             //fComponent = pow(fComponent, roughness * FRESNEL_ROUGHNESS_POWER);
@@ -121,23 +121,23 @@
         }
         
         // We use the common Cook-Torrance BRDF for this.
-        mediump vec4 brdfCookTorranceOptimized(mediump vec3 normal, mediump vec3 lightDir,
-                mediump vec3 viewVector, mediump vec4 lightColor, 
-                mediump vec4 specColor, mediump float roughness) {
-            mediump vec3 halfway = normalize(lightDir + viewVector);
-            mediump float nDotL = clampDot(normal, lightDir) + .001;
-            mediump float nDotV = clampDot(normal, viewVector) + .001;
+        vec4 brdfCookTorranceOptimized(vec3 normal, vec3 lightDir,
+                vec3 viewVector, vec4 lightColor, 
+                vec4 specColor, float roughness) {
+            vec3 halfway = normalize(lightDir + viewVector);
+            float nDotL = clampDot(normal, lightDir) + .0001;
+            float nDotV = clampDot(normal, viewVector) + .0001;
             
-            mediump float fComponent = fresnelSchlick(halfway, viewVector);
+            float fComponent = fresnelSchlick(halfway, viewVector);
             fComponent = pow(fComponent, 1.0 + roughness * FRESNEL_ROUGHNESS_POWER);
             
             roughness = roughness * roughness;
             specColor += (1.0 - specColor) * fComponent;
             
             roughness = roughness * roughness; // roughness = roughness ^ 2 now.
-            mediump float nDotH2 = clampDot(normal, halfway);
+            float nDotH2 = clampDot(normal, halfway);
             nDotH2 = nDotH2 * nDotH2;
-            mediump float denominator = nDotH2 * (roughness - 1.0) + 1.0;
+            float denominator = nDotH2 * (roughness - 1.0) + 1.0;
             
             return lightColor * specColor * roughness / 
                     (PI * denominator * denominator * 
@@ -145,18 +145,18 @@
                     (nDotL + sqrt(roughness + (1.0 - roughness) * nDotL)));
         }
         
-        // To fall back to if while working on other brdfs.
-        mediump vec4 brdfBlinnPhong(mediump vec3 normal, mediump vec3 lightDir,
-                mediump vec3 viewVector, mediump vec4 lightColor, 
-                mediump vec4 specColor, mediump float roughness) {
+        // To fall back to while working on other brdfs.
+        vec4 brdfBlinnPhong(vec3 normal, vec3 lightDir,
+                vec3 viewVector, vec4 lightColor, 
+                vec4 specColor, float roughness) {
             roughness = roughness * roughness * roughness * roughness;
-            mediump vec3 halfway = normalize(lightDir + viewVector);
+            vec3 halfway = normalize(lightDir + viewVector);
             // Fresnel component.
-            mediump float fresnel = fresnelSchlick(halfway, viewVector);
+            float fresnel = fresnelSchlick(halfway, viewVector);
             
-            //mediump float amount = pow(clampDot(halfway, normal), 500.0 / (1.001 - roughness));
+            //float amount = pow(clampDot(halfway, normal), 500.0 / (1.001 - roughness));
             // Normalized Blinn-Phong.
-            mediump float amount = pow(clampDot(halfway, normal), 2.0 / roughness - 2.0) / (PI * roughness);
+            float amount = pow(clampDot(halfway, normal), 2.0 / roughness - 2.0) / (PI * roughness);
             
             // At fresnel = 1, surface reflects 100%.
             specColor = mix (specColor, vec4(1.0), fresnel);
@@ -165,45 +165,43 @@
         }
         
         void main(void) {
-            mediump vec3 viewVector = normalize(vPosition);
+            vec3 viewVector = normalize(vPosition);
 
-            mediump vec4 surfaceDiffuse = uDiffuse * texture2D(uDiffuse2D, vUV);
-            mediump vec4 surfaceAO = uAmbient * texture2D(uOcclusion2D, vUV);
-            mediump vec4 surfaceNormal = texture2D(uNormal2D, vUV);
-            mediump vec4 surfaceSpecColor = uSpecular * texture2D(uSpecular2D, vUV);
+            vec4 surfaceDiffuse = uDiffuse * texture2D(uDiffuse2D, vUV);
+            vec4 surfaceAO = uAmbient * texture2D(uOcclusion2D, vUV);
+            vec4 surfaceNormal = texture2D(uNormal2D, vUV);
+            vec4 surfaceSpecColor = uSpecular * texture2D(uSpecular2D, vUV);
             // 1.001 to prevent roughness being exactly 0.
-            mediump float surfaceRoughness = 1.001 - uGloss * texture2D(uGloss2D, vUV).r;
-            mediump vec4 emission = uEmission * texture2D(uEmission2D, vUV);
-            
+            float surfaceRoughness = 1.001 - uGloss * texture2D(uGloss2D, vUV).r;
+            vec4 emission = uEmission * texture2D(uEmission2D, vUV);
             // Calculate surfaceNormal based on bump map.
-            mediump vec3 finalNormal = normalize(uNormalMultiplier 
+            vec3 finalNormal = normalize(uNormalMultiplier 
                     * ((surfaceNormal.r - .5) * vBitangent 
                     + (surfaceNormal.g - .5) * vTangent)
                     + (surfaceNormal.b - .5) * vNormal);
-
             surfaceDiffuse *= 1.0 - surfaceSpecColor;
             
             // This will acumulate through each light source.
-            mediump vec4 finalColor = vec4(vec3(emission), 1.0);
+            vec4 finalColor = vec4(vec3(emission), 1.0);
             
             // Ambient.
-            mediump float environmentFresnel = fresnelSchlick(finalNormal, -viewVector);
+            
+            float environmentFresnel = fresnelSchlick(finalNormal, -viewVector);
             environmentFresnel = pow(environmentFresnel, 1.0 + surfaceRoughness * FRESNEL_ROUGHNESS_POWER);
-            //environmentFresnel = pow(environmentFresnel, surfaceRoughness * FRESNEL_ROUGHNESS_POWER);
             // At fresnel = 1, surface reflects 100%.
-            mediump vec4 environmentSpecColor = mix (surfaceSpecColor, vec4(1.0), environmentFresnel);
+            vec4 environmentSpecColor = mix (surfaceSpecColor, vec4(1.0), environmentFresnel);
 
-            mediump vec3 reflectionVector = reflect(viewVector, finalNormal);
-            reflectionVector = vec3(uVMMatrix * vec4(reflectionVector, 0.0));
+            vec3 reflectionVector = reflect(viewVector, finalNormal);
+            reflectionVector = mat3(uVMMatrix) * reflectionVector, 0.0;
             
-            mediump vec4 specularEnvironment = uEnvironmentAmbient * environmentSpecColor
+            vec4 specularEnvironment = uEnvironmentAmbient * environmentSpecColor
                     * textureCube(uSkybox, reflectionVector * vec3(1.0, 1.0, -1.0),
-                    MIPS_COUNT * surfaceRoughness * 8.0);
+                    MIPS_COUNT * mix(surfaceRoughness, 0.0, environmentFresnel) * 6.0);
             
-            mediump vec4 diffuseEnvironment = 
+            vec4 diffuseEnvironment = 
                     uEnvironmentAmbient 
-                    * textureCube(uSkybox, vec3(uVMMatrix 
-                    * vec4(finalNormal, 0)) * vec3(1.0, 1.0, -1.0), MIPS_COUNT);
+                    * textureCube(uSkybox, mat3(uVMMatrix) 
+                    * finalNormal * vec3(1.0, 1.0, -1.0), MIPS_COUNT);
             diffuseEnvironment *= surfaceDiffuse * surfaceAO * (1.0 - environmentFresnel);
             
             finalColor += diffuseEnvironment + specularEnvironment;
@@ -211,24 +209,25 @@
             // Light sources.
             // &lt; because of xml....
             for (int i = 0; i &lt; NUM_OF_LIGHTS; i++) {
-                mediump vec4 diffuseReflection = surfaceDiffuse *
-                        max(-dot(uLightDirections[i], finalNormal), 0.0) * uLightColors[i];
-                mediump vec4 specularReflection = brdfCookTorranceOptimized(finalNormal, -uLightDirections[i],
-                        -viewVector, uLightColors[i], surfaceSpecColor, surfaceRoughness);
-                finalColor += diffuseReflection + specularReflection;
+                if (dot(vNormal, uLightDirections[i]) &lt; 0.0) {
+                    vec4 diffuseReflection = surfaceDiffuse *
+                            clampDot(-uLightDirections[i], finalNormal) * uLightColors[i];
+                    vec4 specularReflection = brdfCookTorranceOptimized(finalNormal, -uLightDirections[i],
+                            -viewVector, uLightColors[i], surfaceSpecColor, surfaceRoughness);
+                    finalColor += diffuseReflection + specularReflection;
+                }
             }
             
             gl_FragColor = vec4(finalColor.rgb, mix(surfaceDiffuse.a, 1.0, uDissolve));
-            //gl_FragColor = vec4(vec3(environmentFresnel), 1.0);
         }
     </fragment>
     <vertexcube>
-        attribute mediump vec2 aProjectedPos;
+        attribute vec2 aProjectedPos;
         
         // ProjectedPos / divisor = clip space.
-        uniform mediump vec2 uDivisor;
+        uniform vec2 uDivisor;
         
-        varying mediump vec3 aViewVector;
+        varying vec3 aViewVector;
 
         void main(void) {
             aViewVector = vec3(aProjectedPos, -1.0);
@@ -236,12 +235,13 @@
         }
     </vertexcube>
     <fragmentcube>
-        uniform mediump float uBackgroundLOD;
+        precision mediump float;
+        uniform float uBackgroundLOD;
         uniform samplerCube uSkybox;
-        uniform mediump mat4 uVMMatrix;
-        uniform mediump float uBackgroundIntensity;
+        uniform mat4 uVMMatrix;
+        uniform float uBackgroundIntensity;
 
-        varying mediump vec3 aViewVector;
+        varying vec3 aViewVector;
 
         void main(void) {
             gl_FragColor = vec4(vec3(uBackgroundIntensity 
@@ -250,9 +250,9 @@
         }
     </fragmentcube>
     <verteximage>
-        attribute mediump vec2 aVertexPos;
+        attribute vec2 aVertexPos;
         
-        varying mediump vec2 vUV;
+        varying vec2 vUV;
 
         void main(void) {
             vUV = (aVertexPos + 1.0) / 2.0;
@@ -262,15 +262,16 @@
     <fragmentthreshold>
         // Use the verteximage vertex shader to rasterize.
         
+        precision mediump float;
         uniform sampler2D uFrameBuffer;
-        uniform mediump float uThreshold;
-        uniform mediump float uSoftRange;
+        uniform float uThreshold;
+        uniform float uSoftRange;
         
-        varying mediump vec2 vUV;
+        varying vec2 vUV;
         
         void main(void) {
-            mediump vec4 pixel = texture2D(uFrameBuffer, vUV);
-            mediump float weight = 0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b;
+            vec4 pixel = texture2D(uFrameBuffer, vUV);
+            float weight = 0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b;
             weight = clamp((weight - (uThreshold - uSoftRange / 2.0)) / uSoftRange
                     , 0.0, 1.0);
             gl_FragColor = vec4((weight * pixel).rgb, 1.0);;
@@ -280,20 +281,21 @@
         // Blur horizontally.
         // Use the verteximage vertex shader to rasterize.
         
-        const mediump float halfWindowSize = 5.0;
+        #define HALF_WINDOW_SIZE 5.0
+        precision mediump float;
         
         uniform sampler2D uFrameBuffer;
-        uniform mediump float uTexelSize;
+        uniform float uTexelSize;
         
-        varying mediump vec2 vUV;
+        varying vec2 vUV;
         
         void main(void) {
-            mediump vec4 pixel = texture2D(uFrameBuffer, vUV);
-            for (mediump float i = 1.0; i &lt;= halfWindowSize; i++) {
+            vec4 pixel = texture2D(uFrameBuffer, vUV);
+            for (float i = 1.0; i &lt;= HALF_WINDOW_SIZE; i++) {
                 pixel += texture2D(uFrameBuffer, vUV + vec2(uTexelSize * i, 0));
                 pixel += texture2D(uFrameBuffer, vUV + vec2(-uTexelSize * i, 0));
             }
-            pixel /= halfWindowSize * 2.0 + 1.0;
+            pixel /= HALF_WINDOW_SIZE * 2.0 + 1.0;
             gl_FragColor = vec4(pixel.rgb, 1.0);
         }
     </fragmentblurhorizontal>
@@ -301,34 +303,36 @@
         // Blur vertically.
         // Use the verteximage vertex shader to rasterize.
         
-        const mediump float halfWindowSize = 5.0;
+        #define HALF_WINDOW_SIZE 5.0
+        precision mediump float;
 
         uniform sampler2D uFrameBuffer;
-        uniform mediump float uTexelSize;
+        uniform float uTexelSize;
         
-        varying mediump vec2 vUV;
+        varying vec2 vUV;
         
         void main(void) {
-            mediump vec4 pixel = texture2D(uFrameBuffer, vUV);
-            for (mediump float i = 1.0; i &lt;= halfWindowSize; i++) {
+            vec4 pixel = texture2D(uFrameBuffer, vUV);
+            for (float i = 1.0; i &lt;= HALF_WINDOW_SIZE; i++) {
                 pixel += texture2D(uFrameBuffer, vUV + vec2(0, uTexelSize * i));
                 pixel += texture2D(uFrameBuffer, vUV + vec2(0, -uTexelSize * i));
             }
-            pixel /= halfWindowSize * 2.0 + 1.0;
+            pixel /= HALF_WINDOW_SIZE * 2.0 + 1.0;
             gl_FragColor = vec4(pixel.rgb, 1.0);
         }
     </fragmentblurvertical>
     <fragmentadd>
         // Use the verteximage vertex shader to rasterize.
+        precision mediump float;
         
         uniform sampler2D uFrame1;
         uniform sampler2D uFrame2;
-        uniform mediump float uFrame2Strength;
+        uniform float uFrame2Strength;
         
-        varying mediump vec2 vUV;
+        varying vec2 vUV;
         
         void main(void) {
-            mediump vec4 pixel = texture2D(uFrame1, vUV);
+            vec4 pixel = texture2D(uFrame1, vUV);
             pixel += texture2D(uFrame2, vUV) * uFrame2Strength;
             gl_FragColor = vec4(pixel.rgb, 1.0);
         }

@@ -49,9 +49,9 @@
     </body>
     <script>
         var modelViewer = new Viewer(document.getElementById("glCanvas"));
-        modelViewer.loadSkybox('front.jpg', 'back.jpg', 
-                'left.jpg', 'right.jpg',
-                'top.jpg', 'bottom.jpg');
+        modelViewer.loadSkybox('front.png', 'back.png', 
+                'left.png', 'right.png',
+                'top.png', 'bottom.png');
         modelViewer.directionalLights[0].color = [0.439, 0.408, 0.267, 1];
         modelViewer.directionalLights[0].setDirection([.3, -.3, -.9]);
         modelViewer.directionalLights[0].fixed = true;
@@ -64,7 +64,7 @@
         
         objToMesh(modelJson['objText'], modelJson['mtlText'], modelJson['path'],
             modelViewer, function(mesh) {
-                mesh.rotation = [90, 0, 0];
+                //mesh.rotation = [90, 0, 0];
             });
         modelViewer.start(1000/60); // 60FPS
     </script>

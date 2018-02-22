@@ -29,7 +29,7 @@ function Viewer(canvas) {
     this.canvas = canvas;
     this.gl = null;
     try {
-        this.gl = canvas.getContext("experimental-webgl");
+        this.gl = canvas.getContext("webgl2");
     } catch(e) {
         return;
     }
@@ -55,7 +55,7 @@ function Viewer(canvas) {
     this.mvMatrix = Matrix.I(4);
     this.refreshRightUpVectors();
     this.ambient = [1, 1, 1, 1];
-    this.backgroundIntensity = 1;
+    this.backgroundIntensity = .86;
     this.directionalLights = []; // Maximum of 6 directional lights.
     var light = new DirectionalLight();
     light.setDirection([0, -1, -1]);
@@ -69,7 +69,7 @@ function Viewer(canvas) {
     this.shaderProgramBlurHorizontal = createShaderProgram(this.gl, VERTEX_IMAGE, FRAGMENT_BLUR_HORIZONTAL, 'Blur');
     this.shaderProgramBlurVertical = createShaderProgram(this.gl, VERTEX_IMAGE, FRAGMENT_BLUR_VERTICAL, 'Blur');
     this.shaderProgramAdd = createShaderProgram(this.gl, VERTEX_IMAGE, FRAGMENT_ADD, 'Add');
-
+    
     this.positionAttribute = this.gl.getAttribLocation(this.shaderProgram, "aPosition");
     this.normalAttribute = this.gl.getAttribLocation(this.shaderProgram, "aNormal");
     this.tangentAttribute = this.gl.getAttribLocation(this.shaderProgram, "aTangent");
@@ -96,7 +96,7 @@ function Viewer(canvas) {
     this.frameBuffer = Array(3);
     this.depthBuffer = Array(3);
     this.frameTexture = Array(3);
-    this.postProcessingWidth = 220;
+    this.postProcessingHeight = 120;
     this.resizeCanvas();
     
     this.gl.clearColor(this.ambient[0], this.ambient[1], this.ambient[2], this.ambient[3]);
@@ -120,11 +120,11 @@ function Viewer(canvas) {
     this.prevTime = (new Date()).getTime();
     this.countFPS = false;
     this.bloomEnabled = true;
-    this.bloomThreshold = .97;
-    this.bloomBlurIterations = 5;
+    this.bloomThreshold = .82;
+    this.bloomBlurIterations = 8;
     // Multiplying bloomSize with texel size so there won't be a need to pass an extra parameter into the shader.
-    this.bloomSize = 1.7;
-    this.bloomIntesity = .84;
+    this.bloomSize = 2.2;
+    this.bloomIntesity = 1.84;
     this.bloomSoftRange = .01;
     
     this.updateCamera = function() {
@@ -247,8 +247,8 @@ Viewer.prototype.resizeCanvas = function() {
     
     // Create image processing buffers.
     // Need 3 frame buffers and textures.
-    // postProcessingWidth was set at the beginning.
-    this.postProcessingHeight = parseInt(this.postProcessingWidth * this.height / this.width);
+    // postProcessingHeight was set at the beginning.
+    this.postProcessingWidth = parseInt(this.postProcessingHeight * this.width / this.height);
     this.postProcessingTexelSize = [1 / this.postProcessingWidth, 1 / this.postProcessingHeight];
     for (var i = 0; i < 3; i++) {
         if (this.frameBuffer[i]) {
@@ -301,11 +301,6 @@ Viewer.prototype.setPerspectiveMatrix = function() {
 }
 
 Viewer.prototype.drawScene = function() {
-    function applyRotation(viewer) {
-        rotateMatrix(viewer.mvMatrix, viewer.pitch, [1, 0, 0]);
-        rotateMatrix(viewer.mvMatrix, -viewer.yaw, [0, 1, 0]);
-    }
-
     if (this.bloomEnabled) {
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.frameBuffer[0]);
     }
@@ -315,11 +310,17 @@ Viewer.prototype.drawScene = function() {
     // Geometry rendering viewport.
     this.mvMatrix = Matrix.I(4);
     translateMatrix(this.mvMatrix, $V([0, 0, -this.distance]));
-    applyRotation(this);
+    
+    rotateMatrix(this.mvMatrix, this.pitch, [1, 0, 0]);
+    rotateMatrix(this.mvMatrix, -this.yaw, [0, 1, 0]);
+    
     translateMatrix(this.mvMatrix, this.offset.multiply(-1));
-
-    var VMMatrix = this.mvMatrix.inverse();
-
+    
+    // Doing this instead of mvMatrix.inverse() because inversing sometimes divides by 0.
+    var vmMatrix = Matrix.I(4);
+    rotateMatrix(vmMatrix, this.yaw, [0, 1, 0]);
+    rotateMatrix(vmMatrix, -this.pitch, [1, 0, 0]);
+    
     // Draw the cubemap.
     this.gl.useProgram(this.shaderProgramCube);
     this.gl.enableVertexAttribArray(this.projectedPosAttribute);
@@ -332,7 +333,7 @@ Viewer.prototype.drawScene = function() {
     this.gl.uniform2fv(this.gl.getUniformLocation(this.shaderProgramCube, "uDivisor"), this.screenDivisor);
     this.gl.uniform1f(this.gl.getUniformLocation(this.shaderProgramCube, "uBackgroundIntensity"), this.backgroundIntensity);
     this.gl.uniformMatrix4fv(this.gl.getUniformLocation(this.shaderProgramCube, "uVMMatrix")
-            , false, VMMatrix.flatten());
+            , false, vmMatrix.flatten());
     
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.projectedPosBuffer);
     this.gl.vertexAttribPointer(this.projectedPosAttribute, 2, this.gl.FLOAT, false, 0, 0);
@@ -347,7 +348,7 @@ Viewer.prototype.drawScene = function() {
     this.gl.enableVertexAttribArray(this.uvAttribute);
 
     this.gl.uniformMatrix4fv(this.gl.getUniformLocation(this.shaderProgram, "uVMMatrix")
-            , false, VMMatrix.flatten());
+            , false, vmMatrix.flatten());
 
     this.refreshRightUpVectors();
     this.gl.uniform4fv(this.gl.getUniformLocation(this.shaderProgram, "uEnvironmentAmbient"), this.ambient);
@@ -709,23 +710,38 @@ Mesh.prototype.processGeometry = function() {
 
 Mesh.prototype.draw = function() {
     var thisViewer = this.viewer;
-    function setMatrices(modelViewer) {
-        function setMatrixUniform(matrix, viewerToSet, uniformName) {
-            viewerToSet.gl.uniformMatrix4fv(
-                viewerToSet.gl.getUniformLocation(viewerToSet.shaderProgram, uniformName),
-                false, new Float32Array(matrix.flatten()));
-        }
-        
-        var normalMatrix = modelViewer.mvMatrix.inverse().transpose();
-        setMatrixUniform(modelViewer.perspectiveMatrix, modelViewer, "uPMatrix");
-        setMatrixUniform(modelViewer.mvMatrix, modelViewer, "uMVMatrix");
-        setMatrixUniform(normalMatrix, modelViewer, "uNormalMatrix");
+    
+    function setMatrixUniform(matrix, viewerToSet, uniformName) {
+        viewerToSet.gl.uniformMatrix4fv(
+            viewerToSet.gl.getUniformLocation(viewerToSet.shaderProgram, uniformName),
+            false, new Float32Array(matrix.flatten()));
     }
     
     this.viewer.mvMatrixStack.push(this.viewer.mvMatrix.dup());
-    transformMatrix(this.viewer.mvMatrix, this.position, this.scale, this.rotation);
-    setMatrices(this.viewer);
     
+    //transformMatrix(this.viewer.mvMatrix, this.position, this.scale, this.rotation);
+
+    translateMatrix(this.viewer.mvMatrix, this.position);
+
+    // Rotate matrix by Euler angles in order Z -> X -> Y
+    // Z axis
+    rotateMatrix(this.viewer.mvMatrix, this.rotation[2], [0, 0, 1]);
+    
+    // X axis
+    rotateMatrix(this.viewer.mvMatrix, this.rotation[0], [1, 0, 0]);
+    
+    // Y axis
+    rotateMatrix(this.viewer.mvMatrix, this.rotation[1], [0, 1, 0]);
+    
+    // Normal matrix is the MV matrix before scaling.
+    var normalMatrix = this.viewer.mvMatrix.dup();
+    
+    scaleMatrix(this.viewer.mvMatrix, this.scale);
+
+    // Matrix inverse freaks out when y points straight up.
+    setMatrixUniform(this.viewer.perspectiveMatrix, this.viewer, "uPMatrix");
+    setMatrixUniform(this.viewer.mvMatrix, this.viewer, "uMVMatrix");
+    setMatrixUniform(normalMatrix, this.viewer, "uNormalMatrix");
     
     thisViewer.gl.disable(thisViewer.gl.BLEND);
     this.submeshes.forEach(function(submesh) {
@@ -885,21 +901,6 @@ function createEmptyCubemap(gl, color) {
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D, null);
     return newCubemap;
-}
-
-function transformMatrix(matrix, position, scale, rotation) {
-    translateMatrix(matrix, position);
-    scaleMatrix(matrix, scale);
-
-    // Rotate matrix by Euler angles in order Z -> X -> Y
-    // Z axis
-    rotateMatrix(matrix, rotation[2], [0, 0, 1]);
-    
-    // X axis
-    rotateMatrix(matrix, rotation[0], [1, 0, 0]);
-    
-    // Y axis
-    rotateMatrix(matrix, rotation[1], [0, 1, 0]);
 }
 
 function scaleMatrix(matrix, scalingVector) {
