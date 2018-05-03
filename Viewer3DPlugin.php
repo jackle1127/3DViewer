@@ -1,12 +1,12 @@
 <?php
 class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
-    protected $_hooks = array('public_items_show');
+    protected $_hooks = array(
+        'public_items_show', 
+        'config_form',
+        'config'
+    );
     
     protected $_options = array(
-        'viewer3d_manifest_description_element' => '',
-        'viewer3d_manifest_description_default' => true,
-        'viewer3d_manifest_attribution_element' => '',
-        'viewer3d_manifest_attribution_default' => 'Provided by Example Organization',
         'viewer3d_manifest_license_element' => '["Dublin Core", "Rights"]',
         'viewer3d_manifest_license_default' => 'http://www.example.org/license.html',
         'viewer3d_manifest_logo_default' => '',
@@ -70,6 +70,10 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
         ?>
             <script>
                 <?php
+                    $backgroundPath = $PLUGIN_DIRECTORY . '/Resources/Backgrounds/Background_';
+                    $backgroundOption = get_option('viewer3d_options_background');
+                    if (!$backgroundOption) $backgroundOption = 3;
+                    $backgroundPath .= $backgroundOption . '/';
                     // Load the shaders into the shaders object.
                     $shaders = simplexml_load_file("plugins/Viewer3D/shaders.xml");
                     echo "var shaders = ".json_encode($shaders, TRUE).";\n";
@@ -99,9 +103,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     element.style.cursor = 'default';
                     // Create model viewer.
                     modelViewer = new Viewer(document.getElementById("glCanvas"));
-                    modelViewer.loadSkybox('<?php echo $PLUGIN_DIRECTORY?>front.png', '<?php echo $PLUGIN_DIRECTORY?>back.png', 
-                            '<?php echo $PLUGIN_DIRECTORY?>left.png', '<?php echo $PLUGIN_DIRECTORY?>right.png',
-                            '<?php echo $PLUGIN_DIRECTORY?>top.png', '<?php echo $PLUGIN_DIRECTORY?>bottom.png');
+                    modelViewer.loadSkybox('<?php echo $backgroundPath?>front.png', '<?php echo $backgroundPath?>back.png', 
+                            '<?php echo $backgroundPath?>left.png', '<?php echo $backgroundPath?>right.png',
+                            '<?php echo $backgroundPath?>top.png', '<?php echo $backgroundPath?>bottom.png');
                     modelViewer.directionalLights[0].color = [1, 1, .85, 1];
                     modelViewer.directionalLights[0].setDirection([-.3, -.15, -.3]);
                     modelViewer.directionalLights[0].fixed = true;
@@ -123,6 +127,43 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 }
             </script>
         <?php
+    }
+    
+    /**
+     * Shows plugin configuration page.
+     */
+    public function hookConfigForm($args)
+    {
+        $view = get_view();
+        $elementTable = $this->_db->getTable('Element');
+        $backgroundOption = get_option('viewer3d_options_background');
+        if (!$backgroundOption) $backgroundOption = 3;
+        ?>
+            <style>
+                .hidden {
+                    display: none;
+                }
+            </style>
+            <select id='viewer3d_options_background' name='viewer3d_options_background' >
+                <option value=1 <?php if($backgroundOption == 1) {echo('selected');}?>>Indoor</option>
+                <option value=2 <?php if($backgroundOption == 2) {echo('selected');}?>>Tunnel</option>
+                <option value=3 <?php if($backgroundOption == 3) {echo('selected');}?>>Green Field</option>
+                <option value=4 <?php if($backgroundOption == 4) {echo('selected');}?>>Road</option>
+                <option value=5 <?php if($backgroundOption == 5) {echo('selected');}?>>Urban</option>
+            </select>
+        <?php
+    }
+    
+    /**
+     * Processes the configuration form.
+     *
+     * @param array Options set in the config form.
+     */
+    public function hookConfig($args)
+    {
+        $post = $args['post'];
+        set_option('viewer3d_options_background', $post['viewer3d_options_background']);
+        
     }
 }
 ?>
