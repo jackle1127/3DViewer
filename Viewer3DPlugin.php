@@ -3,7 +3,8 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     protected $_hooks = array(
         'public_items_show', 
         'config_form',
-        'config'
+        'config',
+        'install'
     );
     
     protected $_options = array(
@@ -23,6 +24,14 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
         'viewer3d_force_https' => false,
         'viewer3d_force_strict_json' => false,
     );
+    /**
+     * Installs the plugin.
+     */
+    public function hookInstall()
+    {
+        
+        $this->_installOptions();
+    }
     
     /**
      * Hook to display viewer.
@@ -54,7 +63,12 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 $viewerArgs -> directory = $directory;
                 $viewerArgs -> obj = $objFile;
                 $viewerArgs -> mtl = $mtlFile;
-                
+                $viewerArgs -> options = get_option('viewer3d_options');
+                if (isset($viewerArgs -> options)) {
+                    $viewerArgs -> options = json_decode(viewerArgs -> options);
+                } else {
+                    $viewerArgs -> options = this -> getDefaultOptions();
+                }
                 $this -> _showViewer($viewerArgs);
             }
         }
@@ -64,15 +78,15 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
         // PLUGIN_DIRECTORY is for the html to use.
         $PLUGIN_DIRECTORY = '../../plugins/Viewer3D/';
         $clickToView = $PLUGIN_DIRECTORY . 'click_to_view_3d.png';
+        
         $width = '100%';
-        $height = '400px';
+        $height = $args -> options -> height . 'px';
         
         ?>
             <script>
                 <?php
                     $backgroundPath = $PLUGIN_DIRECTORY . '/Resources/Backgrounds/Background_';
-                    $backgroundOption = get_option('viewer3d_options_background');
-                    if (!$backgroundOption) $backgroundOption = 3;
+                    $backgroundOption = $args -> options -> background;
                     $backgroundPath .= $backgroundOption . '/';
                     // Load the shaders into the shaders object.
                     $shaders = simplexml_load_file("plugins/Viewer3D/shaders.xml");
@@ -136,8 +150,18 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     {
         $view = get_view();
         $elementTable = $this->_db->getTable('Element');
-        $backgroundOption = get_option('viewer3d_options_background');
-        if (!$backgroundOption) $backgroundOption = 3;
+        $configArgs -> options = get_option('viewer3d_options');
+        if (isset($configArgs -> options)) {
+            $configArgs -> options = json_decode(configArgs -> options);
+            
+        } else {
+            $configArgs -> options = this -> getDefaultOptions();
+        }
+        this -> _showConfigForm($configArgs);
+        
+    }
+    
+    protected function _showConfigForm($arg) {
         ?>
             <style>
                 .hidden {
@@ -145,13 +169,20 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 }
             </style>
             <select id='viewer3d_options_background' name='viewer3d_options_background' >
-                <option value=1 <?php if($backgroundOption == 1) {echo('selected');}?>>Indoor</option>
+                <option value=1 <?php if($args == 1) {echo('selected');}?>>Indoor</option>
                 <option value=2 <?php if($backgroundOption == 2) {echo('selected');}?>>Tunnel</option>
                 <option value=3 <?php if($backgroundOption == 3) {echo('selected');}?>>Green Field</option>
                 <option value=4 <?php if($backgroundOption == 4) {echo('selected');}?>>Road</option>
                 <option value=5 <?php if($backgroundOption == 5) {echo('selected');}?>>Urban</option>
             </select>
         <?php
+    }
+    
+    protected function getDefaultOptions() {
+        $option = new stdClass();
+        $option -> height = 400;
+        $option -> background = 3;
+        return $option;
     }
     
     /**
