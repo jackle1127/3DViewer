@@ -124,7 +124,7 @@ function Viewer(canvas) {
     this.bloomBlurIterations = 8;
     // Multiplying bloomSize with texel size so there won't be a need to pass an extra parameter into the shader.
     this.bloomSize = 2.2;
-    this.bloomIntesity = 1.84;
+    this.bloomIntensity = 1.84;
     this.bloomSoftRange = .01;
     
     this.updateCamera = function() {
@@ -471,7 +471,7 @@ Viewer.prototype.drawScene = function() {
                 this.shaderProgramAdd, 'uFrame2'), 12);
         
         this.gl.uniform1f(this.gl.getUniformLocation(this.shaderProgramAdd,
-                "uFrame2Strength"), this.bloomIntesity);
+                "uFrame2Strength"), this.bloomIntensity);
         
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.imageVertexBuffer);
         this.gl.vertexAttribPointer(this.addVertexAtt, 2, this.gl.FLOAT, false, 0, 0);

@@ -30,6 +30,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     public function hookInstall()
     {
         $this->_installOptions();
+        set_option('viewer3d_options', json_encode($this -> getDefaultOptions()));
     }
     
     /**
@@ -76,10 +77,6 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     protected function _showViewer($args) {
         // PLUGIN_DIRECTORY is for the html to use.
         $PLUGIN_DIRECTORY = '../../plugins/Viewer3D/';
-        $clickToView = $PLUGIN_DIRECTORY . 'click_to_view_3d.png';
-        
-        $width = '100%';
-        $height = $args -> options -> height . 'px';
         
         ?>
             <script>
@@ -107,13 +104,14 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
             <script src='<?php echo $PLUGIN_DIRECTORY?>glUtils.js'></script>
             <script src='<?php echo $PLUGIN_DIRECTORY?>3DViewer.js'></script>
             <script src='<?php echo $PLUGIN_DIRECTORY?>Obj-processor.js'></script>
-            <canvas id='glCanvas' style='width: <?php echo $width?>; height: <?php echo $height?>;
-                    background: url("<?php echo $clickToView?>") no-repeat center; background-size: cover;
+            <canvas id='glCanvas' style='width: 100%;
+                    background: url("../../plugins/Viewer3D/Resources/Images/click_to_view_3d.png") no-repeat center; background-size: cover;
                     cursor: pointer;'
                     onclick='clickToView(this)'>                
             </canvas>
             <script>
                 var modelViewer;
+                document.getElementById('glCanvas').style.height = options.height + 'px';
                 function clickToView(element) {
                     
                     element.onclick = null;
@@ -121,21 +119,13 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     
                     // Create model viewer.
                     modelViewer = new Viewer(document.getElementById("glCanvas"));
-                    // Load skybox.
-                    modelViewer.loadSkybox('<?php echo $backgroundPath?>front.png', '<?php echo $backgroundPath?>back.png', 
-                            '<?php echo $backgroundPath?>left.png', '<?php echo $backgroundPath?>right.png',
-                            '<?php echo $backgroundPath?>top.png', '<?php echo $backgroundPath?>bottom.png');
-                    modelViewer.directionalLights[0].color = [1, 1, .85, 1];
-                    modelViewer.directionalLights[0].setDirection([-.3, -.15, -.3]);
-                    modelViewer.directionalLights[0].fixed = true;
-                    modelViewer.directionalLights.push(new DirectionalLight());
-                    modelViewer.directionalLights[1].color = [0.439, 0.408, 0.267, 1];
-                    modelViewer.directionalLights[1].setDirection([.3, -.3, .9]);
-                    modelViewer.directionalLights[1].fixed = true;
-                    modelViewer.backgroundLOD = 0;
-                    //modelViewer.ambient = [0, 0, 0, 1];
-                    
-                    objToMesh(modelJson['objText'], modelJson['mtlText'], modelJson['path'],
+
+                    <?php
+                        $this->_setBackground();
+                        $this->_addLights();
+                        $this->_configureViewer();
+                    ?>
+                    objToMesh(modelJson.objText, modelJson.mtlText, modelJson.path,
                         modelViewer, function(mesh) {
                             // Set default position and rotation.
                             mesh.setRotation(options.transform.rotation);
@@ -147,6 +137,47 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     modelViewer.start(1000/60); // 60FPS
                 }
             </script>
+        <?php
+    }
+    
+    protected function _setBackground() {
+        ?>
+            var backgroundPath = '../../plugins/Viewer3D/Resources/Backgrounds/Background_' + 
+                    options.background + '/';
+            // Load skybox.
+            modelViewer.loadSkybox(backgroundPath + 'front.png', backgroundPath + 'back.png', 
+                    backgroundPath + 'left.png', backgroundPath + 'right.png',
+                    backgroundPath + 'top.png', backgroundPath + 'bottom.png');
+            modelViewer.backgroundLOD = 0;
+        <?php
+    }
+    
+    protected function _addLights() {
+        ?>
+            modelViewer.directionalLights[0].color = [1, 1, .85, 1];
+            modelViewer.directionalLights[0].setDirection([-.3, -.15, -.3]);
+            modelViewer.directionalLights[0].fixed = true;
+            modelViewer.directionalLights.push(new DirectionalLight());
+            modelViewer.directionalLights[1].color = [0.439, 0.408, 0.267, 1];
+            modelViewer.directionalLights[1].setDirection([.3, -.3, .9]);
+            modelViewer.directionalLights[1].fixed = true;
+        <?php
+    }
+    
+    protected function _configureViewer() {
+        ?>
+            modelViewer.canvas.style.height = options.height + 'px';
+            modelViewer.resizeCanvas();
+            modelViewer.backgroundIntensity = options.backgroundIntensity;
+            modelViewer.bloomIntensity = options.bloom.intensity;
+            modelViewer.bloomThreshold = options.bloom.threshold;
+            modelViewer.ambient = [
+                options.ambient.color[0] * options.ambient.intensity,
+                options.ambient.color[1] * options.ambient.intensity,
+                options.ambient.color[2] * options.ambient.intensity,
+                1
+            ];
+            
         <?php
     }
     
@@ -164,8 +195,8 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
             $configArgs -> options = $this -> getDefaultOptions();
             set_option('viewer3d_options', json_encode($configArgs -> options));
         }
-        $configArgs -> options = $this -> getDefaultOptions();
-        set_option('viewer3d_options', json_encode($configArgs -> options));
+        //$configArgs -> options = $this -> getDefaultOptions();
+        //set_option('viewer3d_options', json_encode($configArgs -> options));
         $this -> _showConfigForm($configArgs);
         
     }
@@ -180,14 +211,21 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     width: 200px;
                     height: 100px;
                 }
+                #glCanvas {
+                    width: 100%;
+                }
             </style>
             <table>
+                <tr><td colspan=2><canvas id='glCanvas'></td></tr>
                 <tr>
                     <td>Viewer Height:</td>
                     <td><input type='number' id='height' onchange='updateOptions()'/> px</td>
                 </tr>
                 <tr>
-                    <td>Background:</td>
+                    <td>
+                    Background:<br/>
+                    (Custom background can be changed by replacing the corresponding images in the Resources/Backgrounds/Background_6 folder)
+                    </td>
                     <td><select id='background' onchange='updateOptions()'></select></td>
                 </tr>
                 <tr>
@@ -195,25 +233,71 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     <td>
                         Position:
                         <br/>
-                        X <input type='number' id='positionX' onchange='updateOptions()'/>
-                        Y <input type='number' id='positionY' onchange='updateOptions()'/>
-                        Z <input type='number' id='positionZ' onchange='updateOptions()'/>
+                        X <input type='number' id='positionX' onchange='updateOptions()' step="0.01"/>
+                        Y <input type='number' id='positionY' onchange='updateOptions()' step="0.01"/>
+                        Z <input type='number' id='positionZ' onchange='updateOptions()' step="0.01"/>
                         Rotation:
                         <br/>
-                        X <input type='number' id='rotationX' onchange='updateOptions()'/>
-                        Y <input type='number' id='rotationY' onchange='updateOptions()'/>
-                        Z <input type='number' id='rotationZ' onchange='updateOptions()'/>
+                        X <input type='number' id='rotationX' onchange='updateOptions()' step="0.01"/>
+                        Y <input type='number' id='rotationY' onchange='updateOptions()' step="0.01"/>
+                        Z <input type='number' id='rotationZ' onchange='updateOptions()' step="0.01"/>
                     </td>
                 </tr>
                 <tr>
                     <td>Ambient Light Color:</td>
-                    <td><input type="color" id="ambient" onchange="updateOptions()" value="rgb(128, 128, 128);"></td>
+                    <td>
+                        Color:
+                        <input type="color" id="ambientColor" onchange="updateOptions()">
+                        <br/>
+                        Intensity:
+                        <input type="number" id="ambientIntensity" onchange="updateOptions()" step="0.01">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Background Intensity:</td>
+                    <td><input type="number" id="backgroundIntensity" onchange="updateOptions()" step="0.01"></td>
+                </tr>
+                <tr>
+                    <td>Bloom:</td>
+                    <td>
+                        Intensity:
+                        <input type="number" id="bloomIntensity" onchange="updateOptions()" step="0.01">
+                        Threshold:
+                        <input type="number" id="bloomThreshold" onchange="updateOptions()" step="0.01">
+                    </td>
                 </tr>
             </table>
-            
             <br/>
             <input type='text' name='options' id='options'/>
             <script>
+                <?php
+                    // Load the shaders into the shaders object.
+                    $shaders = simplexml_load_file("../plugins/Viewer3D/shaders.xml");
+                    echo "var shaders = ".json_encode($shaders, TRUE).";\n";
+                    $model = new stdClass();
+                    $model -> objText = file_get_contents("../plugins/Viewer3D/Resources/Models/sample.obj");
+                    $model -> mtlText = file_get_contents("../plugins/Viewer3D/Resources/Models/sample.mtl");
+                    $model -> path = '../../plugins/Viewer3D';
+                    echo 'var modelJson = '.json_encode($model, TRUE).";\n";
+                    $PLUGIN_DIRECTORY = '../../plugins/Viewer3D/';
+                ?>
+                var NUM_OF_LIGHTS = 2;
+            </script>
+            <script src='<?php echo $PLUGIN_DIRECTORY?>sylvester.js'></script>
+            <script src='<?php echo $PLUGIN_DIRECTORY?>glUtils.js'></script>
+            <script src='<?php echo $PLUGIN_DIRECTORY?>3DViewer.js'></script>
+            <script src='<?php echo $PLUGIN_DIRECTORY?>Obj-processor.js'></script>
+            <script>
+                // Prevent form from submitting when enter key is pressed.
+                document.onkeypress = function(e) {
+                    var key = e.charCode || e.keyCode || 0;     
+                    if (key == 13) {
+                        updateOptions();
+                        e.preventDefault();
+                    }
+                };
+
+            
                 var options = <?php echo json_encode($args -> options);?>;
                 //alert(JSON.stringify(options, null, 2));
                 
@@ -249,21 +333,72 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 rotationZ.value = options.transform.rotation[2];
                 
                 // Ambient color.
+                var ambientColor = document.getElementById('ambientColor');
+                var ambientIntensity = document.getElementById('ambientIntensity');
+                ambientColor.value = rgbToHex(options.ambient.color);
+                ambientIntensity.value = options.ambient.intensity;
                 
+                // Background intensity.
+                var backgroundIntensity = document.getElementById('backgroundIntensity');
+                backgroundIntensity.value = options.backgroundIntensity;
                 
-                updateOptions();
+                // Bloom.
+                var bloomIntensity = document.getElementById('bloomIntensity');
+                var bloomThreshold = document.getElementById('bloomThreshold');
+                bloomIntensity.value = options.bloom.intensity;
+                bloomThreshold.value = options.bloom.threshold;
+                
+                modelViewer = new Viewer(document.getElementById("glCanvas"));
+                <?php
+                    $this->_setBackground();
+                    $this->_addLights();
+                    $this->_configureViewer();
+                ?>
+                var defaulMesh = null;
+                objToMesh(modelJson.objText, modelJson.mtlText, modelJson.path,
+                    modelViewer, function(mesh) {
+                        // Set default position and rotation.
+                        mesh.setRotation(options.transform.rotation);
+                        mesh.setPosition(options.transform.position);
+                        defaulMesh = mesh;
+                    });
+                window.onresize = function() {
+                    modelViewer.resizeCanvas();
+                };
+                modelViewer.start(1000/60); // 60FPS
+                
+                document.getElementById('options').value = JSON.stringify(options);
                 
                 function updateOptions() {
                     options.height = height.value;
+                    var oldBackground = options.background;
                     options.background = background.value;
+                    if (oldBackground != background.value) {
+                        <?php $this->_setBackground();?>
+                    }
                     options.transform.position[0] = positionX.value;
                     options.transform.position[1] = positionY.value;
                     options.transform.position[2] = positionZ.value;
                     options.transform.rotation[0] = rotationX.value;
                     options.transform.rotation[1] = rotationY.value;
                     options.transform.rotation[2] = rotationZ.value;
+                    options.ambient.color = hexToRgb(ambientColor.value);
+                    options.ambient.intensity = ambientIntensity.value;
+                    options.backgroundIntensity = backgroundIntensity.value;
+                    options.bloom.intensity = bloomIntensity.value;
+                    options.bloom.threshold = bloomThreshold.value;
+                
+                    updateViewer();
                     
                     document.getElementById('options').value = JSON.stringify(options);
+                }
+                
+                function updateViewer() {
+                    <?php $this->_configureViewer();?>
+                    if (defaulMesh != null) {
+                        defaulMesh.setRotation(options.transform.rotation);
+                        defaulMesh.setPosition(options.transform.position);
+                    }
                 }
                 
                 function componentToHex(c) {
@@ -271,22 +406,22 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     return hex.length == 1 ? "0" + hex : hex;
                 }
 
-                function rgbToHex(r, g, b) {
-                    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+                function rgbToHex(rgb) {
+                    return "#" + componentToHex(rgb[0] * 255) + componentToHex(rgb[1] * 255) + componentToHex(rgb[2] * 255);
                 }
                 
                 function hexToRgb(hex) {
                     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                    return result ? {
-                        r: parseInt(result[1], 16),
-                        g: parseInt(result[2], 16),
-                        b: parseInt(result[3], 16)
-                    } : null;
+                    return result ? [
+                        parseInt(result[1], 16) / 255,
+                        parseInt(result[2], 16) / 255,
+                        parseInt(result[3], 16) / 255
+                    ] : null;
                 }
             </script>
             <?php
                 //echo "\n" . get_option('viewer3d_options') . "\n";
-                echo "\n" . json_encode($args) . "\n";
+                //echo "\n" . json_encode($args) . "\n";
                 //echo "waHhhhhhhhhhhhhhhhh";
             ?>
         <?php
@@ -301,7 +436,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 '"position": [0, 0, 0],'.
                 '"rotation": [0, 0, 0]'.
             '},'.
-            '"ambient": [1, 1, 1, 1]'.
+            '"ambient": {"color": [1, 1, 1], "intensity": 1},'.
+            '"backgroundIntensity": 1,'.
+            '"bloom": {"intensity": 1, "threshold": 1}'.
         '}');
         return $options;
     }
