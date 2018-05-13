@@ -172,9 +172,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
             modelViewer.bloomIntensity = options.bloom.intensity;
             modelViewer.bloomThreshold = options.bloom.threshold;
             modelViewer.ambient = [
-                options.ambient.color[0] * options.ambient.intensity,
-                options.ambient.color[1] * options.ambient.intensity,
-                options.ambient.color[2] * options.ambient.intensity,
+                options.environmentIntensity,
+                options.environmentIntensity,
+                options.environmentIntensity,
                 1
             ];
             
@@ -233,24 +233,20 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     <td>
                         Position:
                         <br/>
-                        X <input type='number' id='positionX' onchange='updateOptions()' step="0.01"/>
-                        Y <input type='number' id='positionY' onchange='updateOptions()' step="0.01"/>
-                        Z <input type='number' id='positionZ' onchange='updateOptions()' step="0.01"/>
+                        X <input type='number' id='positionX' onchange='updateOptions()' step="0.01"/><br/>
+                        Y <input type='number' id='positionY' onchange='updateOptions()' step="0.01"/><br/>
+                        Z <input type='number' id='positionZ' onchange='updateOptions()' step="0.01"/><br/>
                         Rotation:
                         <br/>
-                        X <input type='number' id='rotationX' onchange='updateOptions()' step="0.01"/>
-                        Y <input type='number' id='rotationY' onchange='updateOptions()' step="0.01"/>
+                        X <input type='number' id='rotationX' onchange='updateOptions()' step="0.01"/><br/>
+                        Y <input type='number' id='rotationY' onchange='updateOptions()' step="0.01"/><br/>
                         Z <input type='number' id='rotationZ' onchange='updateOptions()' step="0.01"/>
                     </td>
                 </tr>
                 <tr>
-                    <td>Ambient Light Color:</td>
+                    <td>Environment Intensity:</td>
                     <td>
-                        Color:
-                        <input type="color" id="ambientColor" onchange="updateOptions()">
-                        <br/>
-                        Intensity:
-                        <input type="number" id="ambientIntensity" onchange="updateOptions()" step="0.01">
+                        <input type="number" id="environmentIntensity" onchange="updateOptions()" step="0.01">
                     </td>
                 </tr>
                 <tr>
@@ -332,11 +328,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 rotationY.value = options.transform.rotation[1];
                 rotationZ.value = options.transform.rotation[2];
                 
-                // Ambient color.
-                var ambientColor = document.getElementById('ambientColor');
-                var ambientIntensity = document.getElementById('ambientIntensity');
-                ambientColor.value = rgbToHex(options.ambient.color);
-                ambientIntensity.value = options.ambient.intensity;
+                // Environment color.
+                var environmentIntensity = document.getElementById('environmentIntensity');
+                environmentIntensity.value = options.environmentIntensity;
                 
                 // Background intensity.
                 var backgroundIntensity = document.getElementById('backgroundIntensity');
@@ -382,8 +376,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     options.transform.rotation[0] = rotationX.value;
                     options.transform.rotation[1] = rotationY.value;
                     options.transform.rotation[2] = rotationZ.value;
-                    options.ambient.color = hexToRgb(ambientColor.value);
-                    options.ambient.intensity = ambientIntensity.value;
+                    options.environmentIntensity = environmentIntensity.value;
                     options.backgroundIntensity = backgroundIntensity.value;
                     options.bloom.intensity = bloomIntensity.value;
                     options.bloom.threshold = bloomThreshold.value;
@@ -436,7 +429,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 '"position": [0, 0, 0],'.
                 '"rotation": [0, 0, 0]'.
             '},'.
-            '"ambient": {"color": [1, 1, 1], "intensity": 1},'.
+            '"environmentIntensity": 1,'.
             '"backgroundIntensity": 1,'.
             '"bloom": {"intensity": 1, "threshold": 1}'.
         '}');
