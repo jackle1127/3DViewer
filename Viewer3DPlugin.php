@@ -29,7 +29,6 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
      */
     public function hookInstall()
     {
-        
         $this->_installOptions();
     }
     
@@ -65,9 +64,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 $viewerArgs -> mtl = $mtlFile;
                 $viewerArgs -> options = get_option('viewer3d_options');
                 if (isset($viewerArgs -> options)) {
-                    $viewerArgs -> options = json_decode(viewerArgs -> options);
+                    $viewerArgs -> options = json_decode($viewerArgs -> options);
                 } else {
-                    $viewerArgs -> options = this -> getDefaultOptions();
+                    $viewerArgs -> options = $this -> getDefaultOptions();
                 }
                 $this -> _showViewer($viewerArgs);
             }
@@ -84,10 +83,13 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
         
         ?>
             <script>
+                var options = <?php echo json_encode($args -> options);?>;
+                
                 <?php
                     $backgroundPath = $PLUGIN_DIRECTORY . '/Resources/Backgrounds/Background_';
                     $backgroundOption = $args -> options -> background;
                     $backgroundPath .= $backgroundOption . '/';
+                    
                     // Load the shaders into the shaders object.
                     $shaders = simplexml_load_file("plugins/Viewer3D/shaders.xml");
                     echo "var shaders = ".json_encode($shaders, TRUE).";\n";
@@ -113,10 +115,13 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
             <script>
                 var modelViewer;
                 function clickToView(element) {
+                    
                     element.onclick = null;
                     element.style.cursor = 'default';
+                    
                     // Create model viewer.
                     modelViewer = new Viewer(document.getElementById("glCanvas"));
+                    // Load skybox.
                     modelViewer.loadSkybox('<?php echo $backgroundPath?>front.png', '<?php echo $backgroundPath?>back.png', 
                             '<?php echo $backgroundPath?>left.png', '<?php echo $backgroundPath?>right.png',
                             '<?php echo $backgroundPath?>top.png', '<?php echo $backgroundPath?>bottom.png');
@@ -132,7 +137,9 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                     
                     objToMesh(modelJson['objText'], modelJson['mtlText'], modelJson['path'],
                         modelViewer, function(mesh) {
-                            //mesh.rotation = [90, 0, 0];
+                            // Set default position and rotation.
+                            mesh.setRotation(options.transform.rotation);
+                            mesh.setPosition(options.transform.position);
                         });
                     window.onresize = function() {
                         modelViewer.resizeCanvas();
@@ -152,37 +159,151 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
         $elementTable = $this->_db->getTable('Element');
         $configArgs -> options = get_option('viewer3d_options');
         if (isset($configArgs -> options)) {
-            $configArgs -> options = json_decode(configArgs -> options);
-            
+            $configArgs -> options = json_decode($configArgs -> options);
         } else {
-            $configArgs -> options = this -> getDefaultOptions();
+            $configArgs -> options = $this -> getDefaultOptions();
+            set_option('viewer3d_options', json_encode($configArgs -> options));
         }
-        this -> _showConfigForm($configArgs);
+        $configArgs -> options = $this -> getDefaultOptions();
+        set_option('viewer3d_options', json_encode($configArgs -> options));
+        $this -> _showConfigForm($configArgs);
         
     }
     
-    protected function _showConfigForm($arg) {
+    protected function _showConfigForm($args) {
         ?>
             <style>
                 .hidden {
                     display: none;
                 }
+                .colorPicker {
+                    width: 200px;
+                    height: 100px;
+                }
             </style>
-            <select id='viewer3d_options_background' name='viewer3d_options_background' >
-                <option value=1 <?php if($args == 1) {echo('selected');}?>>Indoor</option>
-                <option value=2 <?php if($backgroundOption == 2) {echo('selected');}?>>Tunnel</option>
-                <option value=3 <?php if($backgroundOption == 3) {echo('selected');}?>>Green Field</option>
-                <option value=4 <?php if($backgroundOption == 4) {echo('selected');}?>>Road</option>
-                <option value=5 <?php if($backgroundOption == 5) {echo('selected');}?>>Urban</option>
-            </select>
+            <table>
+                <tr>
+                    <td>Viewer Height:</td>
+                    <td><input type='number' id='height' onchange='updateOptions()'/> px</td>
+                </tr>
+                <tr>
+                    <td>Background:</td>
+                    <td><select id='background' onchange='updateOptions()'></select></td>
+                </tr>
+                <tr>
+                    <td>Default Object Transform:</td>
+                    <td>
+                        Position:
+                        <br/>
+                        X <input type='number' id='positionX' onchange='updateOptions()'/>
+                        Y <input type='number' id='positionY' onchange='updateOptions()'/>
+                        Z <input type='number' id='positionZ' onchange='updateOptions()'/>
+                        Rotation:
+                        <br/>
+                        X <input type='number' id='rotationX' onchange='updateOptions()'/>
+                        Y <input type='number' id='rotationY' onchange='updateOptions()'/>
+                        Z <input type='number' id='rotationZ' onchange='updateOptions()'/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Ambient Light Color:</td>
+                    <td><input type="color" id="ambient" onchange="updateOptions()" value="rgb(128, 128, 128);"></td>
+                </tr>
+            </table>
+            
+            <br/>
+            <input type='text' name='options' id='options'/>
+            <script>
+                var options = <?php echo json_encode($args -> options);?>;
+                //alert(JSON.stringify(options, null, 2));
+                
+                // Height text box.
+                var height = document.getElementById('height');
+                height.value = options.height;
+                
+                // Background drop down.
+                var BACKGROUND_NAMES = ['Indoor', 'Tunnel', 'Green Field', 'Road', 'Urban', 'Custom'];
+                var background = document.getElementById('background');
+                for (var i = 0; i < BACKGROUND_NAMES.length; i++) {
+                    
+                    var newOption = document.createElement('option');
+                    newOption.value = i + 1;
+                    newOption.innerText = BACKGROUND_NAMES[i];
+                    newOption.selected = (options.background == i + 1);
+                    background.appendChild(newOption);
+                }
+                
+                //alert(JSON.stringify(options.transform.position, null, 2));
+                // Object transformation.
+                var positionX = document.getElementById('positionX');
+                var positionY = document.getElementById('positionY');
+                var positionZ = document.getElementById('positionZ');
+                var rotationX = document.getElementById('rotationX');
+                var rotationY = document.getElementById('rotationY');
+                var rotationZ = document.getElementById('rotationZ');
+                positionX.value = options.transform.position[0];
+                positionY.value = options.transform.position[1];
+                positionZ.value = options.transform.position[2];
+                rotationX.value = options.transform.rotation[0];
+                rotationY.value = options.transform.rotation[1];
+                rotationZ.value = options.transform.rotation[2];
+                
+                // Ambient color.
+                
+                
+                updateOptions();
+                
+                function updateOptions() {
+                    options.height = height.value;
+                    options.background = background.value;
+                    options.transform.position[0] = positionX.value;
+                    options.transform.position[1] = positionY.value;
+                    options.transform.position[2] = positionZ.value;
+                    options.transform.rotation[0] = rotationX.value;
+                    options.transform.rotation[1] = rotationY.value;
+                    options.transform.rotation[2] = rotationZ.value;
+                    
+                    document.getElementById('options').value = JSON.stringify(options);
+                }
+                
+                function componentToHex(c) {
+                    var hex = c.toString(16);
+                    return hex.length == 1 ? "0" + hex : hex;
+                }
+
+                function rgbToHex(r, g, b) {
+                    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+                }
+                
+                function hexToRgb(hex) {
+                    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                    return result ? {
+                        r: parseInt(result[1], 16),
+                        g: parseInt(result[2], 16),
+                        b: parseInt(result[3], 16)
+                    } : null;
+                }
+            </script>
+            <?php
+                //echo "\n" . get_option('viewer3d_options') . "\n";
+                echo "\n" . json_encode($args) . "\n";
+                //echo "waHhhhhhhhhhhhhhhhh";
+            ?>
         <?php
     }
     
     protected function getDefaultOptions() {
-        $option = new stdClass();
-        $option -> height = 400;
-        $option -> background = 3;
-        return $option;
+        $options = json_decode(
+        '{'.
+            '"height": 400,'.
+            '"background": 3,'.
+            '"transform": {'.
+                '"position": [0, 0, 0],'.
+                '"rotation": [0, 0, 0]'.
+            '},'.
+            '"ambient": [1, 1, 1, 1]'.
+        '}');
+        return $options;
     }
     
     /**
@@ -193,7 +314,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
     public function hookConfig($args)
     {
         $post = $args['post'];
-        set_option('viewer3d_options_background', $post['viewer3d_options_background']);
+        set_option('viewer3d_options', $post['options']);
         
     }
 }

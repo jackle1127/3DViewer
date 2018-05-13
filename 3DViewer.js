@@ -574,6 +574,17 @@ Viewer.prototype.loadSkybox = function(front, back, left, right, top, bottom) {
     negZ.src = back;
 }
 
+Mesh.prototype.setRotation = function(newRotation) {
+    if (newRotation.length == 3) {
+        this.rotation = newRotation;
+    }
+}
+
+Mesh.prototype.setPosition = function(newPosition) {
+    if (newPosition.length == 3) {
+        this.position = $V(newPosition);
+    }
+}
 
 Mesh.prototype.processGeometry = function() {
     var thisViewer = this.viewer;
