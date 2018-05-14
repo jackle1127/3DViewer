@@ -264,7 +264,7 @@ class Viewer3DPlugin extends Omeka_Plugin_AbstractPlugin {
                 </tr>
             </table>
             <br/>
-            <input type='text' name='options' id='options'/>
+            <input type='text' name='options' id='options' class='hidden'/>
             <script>
                 <?php
                     // Load the shaders into the shaders object.
