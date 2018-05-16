@@ -735,14 +735,15 @@ Mesh.prototype.draw = function() {
     translateMatrix(this.viewer.mvMatrix, this.position);
 
     // Rotate matrix by Euler angles in order Z -> X -> Y
-    // Z axis
-    rotateMatrix(this.viewer.mvMatrix, this.rotation[2], [0, 0, 1]);
+
+    // Y axis
+    rotateMatrix(this.viewer.mvMatrix, this.rotation[1], [0, 1, 0]);
     
     // X axis
     rotateMatrix(this.viewer.mvMatrix, this.rotation[0], [1, 0, 0]);
     
-    // Y axis
-    rotateMatrix(this.viewer.mvMatrix, this.rotation[1], [0, 1, 0]);
+    // Z axis
+    rotateMatrix(this.viewer.mvMatrix, this.rotation[2], [0, 0, 1]);
     
     // Normal matrix is the MV matrix before scaling.
     var normalMatrix = this.viewer.mvMatrix.dup();
